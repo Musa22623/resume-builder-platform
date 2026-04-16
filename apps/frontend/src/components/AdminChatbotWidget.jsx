@@ -3,12 +3,9 @@ import api from "../services/api/client";
 
 const boxStyle = {
   position: "fixed",
-  right: 16,
-  bottom: 16,
-  width: 320,
-  background: "white",
-  border: "1px solid #ddd",
-  padding: 12,
+  right: 20,
+  bottom: 20,
+  width: 360,
   zIndex: 999,
 };
 
@@ -45,29 +42,62 @@ const AdminChatbotWidget = () => {
 
   if (!open) {
     return (
-      <button style={{ position: "fixed", right: 16, bottom: 16, zIndex: 999 }} onClick={() => setOpen(true)}>
+      <button
+        className="rb-btn-primary fixed right-5 bottom-5 z-[999] rounded-full px-5 py-3"
+        onClick={() => setOpen(true)}
+        type="button"
+      >
         Chat with Admin
       </button>
     );
   }
 
   return (
-    <div style={boxStyle}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <strong>Support Chat</strong>
-        <button onClick={() => setOpen(false)}>X</button>
+    <div
+      className="rounded-[1.75rem] border border-white/80 bg-white/95 p-4 shadow-[0_20px_60px_rgba(15,23,42,0.18)] backdrop-blur"
+      style={boxStyle}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Support</p>
+          <strong className="mt-1 block text-lg text-slate-900">Message an admin</strong>
+        </div>
+        <button
+          className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
+          onClick={() => setOpen(false)}
+          type="button"
+        >
+          Close
+        </button>
       </div>
-      <div style={{ maxHeight: 180, overflowY: "auto", margin: "8px 0", border: "1px solid #eee", padding: 6 }}>
+      <div className="mt-4 max-h-56 space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-slate-50 p-3">
         {history.map((item) => (
-          <div key={item.id} style={{ marginBottom: 8 }}>
-            <div><strong>You:</strong> {item.message}</div>
-            {item.admin_reply ? <div><strong>Admin:</strong> {item.admin_reply}</div> : null}
+          <div className="rounded-2xl bg-white p-3 shadow-sm" key={item.id}>
+            <div className="text-sm text-slate-700"><strong className="text-slate-900">You:</strong> {item.message}</div>
+            {item.admin_reply ? (
+              <div className="mt-2 text-sm text-slate-700">
+                <strong className="text-teal-700">Admin:</strong> {item.admin_reply}
+              </div>
+            ) : null}
           </div>
         ))}
+        {!history.length ? <p className="text-sm text-slate-500">No messages yet. Ask for help any time.</p> : null}
       </div>
-      <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type your message..." />
-      <button onClick={send}>Send</button>
-      <p>{status}</p>
+      <textarea
+        className="mt-4 min-h-24 w-full rounded-3xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100"
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="Type your message..."
+        rows={3}
+        value={message}
+      />
+      <button
+        className="rb-btn-primary mt-3 w-full"
+        onClick={send}
+        type="button"
+      >
+        Send
+      </button>
+      <p className="mt-3 text-sm text-slate-500">{status}</p>
     </div>
   );
 };

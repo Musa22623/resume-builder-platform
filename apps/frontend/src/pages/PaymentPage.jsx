@@ -25,22 +25,54 @@ const PaymentPage = () => {
   };
 
   return (
-    <div>
-      <h2>Payment & Subscription</h2>
-      <button onClick={() => startStripeCheckout("monthly")}>Pay Monthly with Stripe</button>
-      <button onClick={() => startStripeCheckout("yearly")}>Pay Yearly with Stripe</button>
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-white/80 bg-white/85 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Billing</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">Choose the payment path that fits your workflow.</h1>
+        <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
+          Stripe remains the fastest path to access. Crypto instructions can be loaded when admin-configured wallets are enabled.
+        </p>
+      </section>
 
-      <hr />
-      <h3>Pay with Crypto</h3>
-      <button onClick={loadCrypto}>Load Crypto Wallets</button>
-      {wallets.map((w) => (
-        <div key={w.network} style={{ border: "1px solid #ccc", marginTop: 12, padding: 12 }}>
-          <strong>{w.network}</strong>
-          <p>{w.address}</p>
-          <img src={w.qr_code_data_url} alt={`${w.network} wallet qr`} width={150} />
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Stripe</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Hosted checkout</h2>
+          <p className="mt-3 text-sm leading-7 text-slate-500">Use the existing backend checkout flow for a monthly or yearly plan.</p>
+          <div className="mt-6 grid gap-3">
+            <button className="rb-btn-primary" onClick={() => startStripeCheckout("monthly")} type="button">
+              Pay Monthly with Stripe
+            </button>
+            <button className="rb-btn-secondary" onClick={() => startStripeCheckout("yearly")} type="button">
+              Pay Yearly with Stripe
+            </button>
+          </div>
         </div>
-      ))}
-      <p>{status}</p>
+
+        <div className="rounded-[2rem] border border-white/80 bg-slate-900 p-6 text-white shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-300">Crypto</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight">Direct wallet instructions</h2>
+          <p className="mt-3 text-sm leading-7 text-slate-300">
+            Load configured wallet addresses and QR codes for stablecoin transfers when that payment rail is enabled.
+          </p>
+          <button className="rb-btn-secondary-dark mt-6" onClick={loadCrypto} type="button">
+            Load Crypto Wallets
+          </button>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        {wallets.map((w) => (
+          <div className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]" key={w.network}>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Network</p>
+            <strong className="mt-3 block text-2xl font-semibold tracking-tight text-slate-900">{w.network}</strong>
+            <p className="mt-4 break-all rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-600">{w.address}</p>
+            <img className="mt-5 rounded-2xl border border-slate-200" src={w.qr_code_data_url} alt={`${w.network} wallet qr`} width={180} />
+          </div>
+        ))}
+      </section>
+
+      <p className="text-sm text-slate-500">{status}</p>
     </div>
   );
 };

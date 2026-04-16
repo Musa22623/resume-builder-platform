@@ -1,6 +1,8 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import AdminChatbotWidget from "./components/AdminChatbotWidget";
+import AppLayout from "./components/layout/AppLayout";
+import PublicLayout from "./components/layout/PublicLayout";
 import AdminChatPage from "./pages/AdminChatPage";
 import AdminPage from "./pages/AdminPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -14,41 +16,32 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 
 const App = () => {
   const { logout, user } = useAuth();
+  const baseNavItems = [
+    { to: "/dashboard", label: "Overview", icon: "OV", description: "Status and next steps" },
+    { to: "/resume", label: "Resume Builder", icon: "RB", description: "Draft and edit content" },
+    { to: "/job", label: "Job Target", icon: "JT", description: "Paste job details" },
+    { to: "/payment", label: "Billing", icon: "BL", description: "Plans and payment rails" },
+  ];
+  const adminNavItems = [
+    ...baseNavItems,
+    { to: "/admin", label: "Admin Console", icon: "AD", description: "Users and support" },
+    { to: "/admin/chat", label: "Support Inbox", icon: "IN", description: "Reply to messages" },
+  ];
+  const authNavItems = user?.is_platform_admin || user?.is_staff ? adminNavItems : baseNavItems;
 
   return (
-    <div>
-      <nav style={{ display: "flex", gap: 12 }}>
-        <Link to="/">Home</Link>
-        {user ? (
-          <>
-            <Link to="/dashboard">Dashboard</Link>
-            <Link to="/resume">Resume</Link>
-            <Link to="/job">Job</Link>
-            <Link to="/payment">Payment</Link>
-            <Link to="/admin">Admin</Link>
-            {user?.is_platform_admin || user?.is_staff ? <Link to="/admin/chat">Admin Chat</Link> : null}
-            <button onClick={logout}>Logout</button>
-          </>
-        ) : (
-          <>
-            <a href="#intro">Intro</a>
-            <a href="#desktop">Desktop App</a>
-            <a href="#contact">Contact</a>
-            <a href="#faq">FAQ</a>
-            <Link to="/login">Login</Link>
-            <Link to="/signup">Sign Up</Link>
-          </>
-        )}
-      </nav>
+    <div className="min-h-screen">
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<PublicLayout logout={logout} user={user}><HomePage /></PublicLayout>} />
+        <Route path="/login" element={<PublicLayout logout={logout} user={user}><LoginPage /></PublicLayout>} />
+        <Route path="/signup" element={<PublicLayout logout={logout} user={user}><SignupPage /></PublicLayout>} />
         <Route
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <DashboardPage />
+              <AppLayout navItems={authNavItems} onLogout={logout} user={user}>
+                <DashboardPage />
+              </AppLayout>
             </ProtectedRoute>
           }
         />
@@ -56,7 +49,9 @@ const App = () => {
           path="/resume"
           element={
             <ProtectedRoute>
-              <ResumeEditorPage />
+              <AppLayout navItems={authNavItems} onLogout={logout} user={user}>
+                <ResumeEditorPage />
+              </AppLayout>
             </ProtectedRoute>
           }
         />
@@ -64,7 +59,9 @@ const App = () => {
           path="/job"
           element={
             <ProtectedRoute>
-              <JobInputPage />
+              <AppLayout navItems={authNavItems} onLogout={logout} user={user}>
+                <JobInputPage />
+              </AppLayout>
             </ProtectedRoute>
           }
         />
@@ -72,7 +69,9 @@ const App = () => {
           path="/payment"
           element={
             <ProtectedRoute>
-              <PaymentPage />
+              <AppLayout navItems={authNavItems} onLogout={logout} user={user}>
+                <PaymentPage />
+              </AppLayout>
             </ProtectedRoute>
           }
         />
@@ -80,7 +79,9 @@ const App = () => {
           path="/admin"
           element={
             <ProtectedRoute adminOnly>
-              <AdminPage />
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage />
+              </AppLayout>
             </ProtectedRoute>
           }
         />
@@ -88,7 +89,9 @@ const App = () => {
           path="/admin/chat"
           element={
             <ProtectedRoute adminOnly>
-              <AdminChatPage />
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminChatPage />
+              </AppLayout>
             </ProtectedRoute>
           }
         />

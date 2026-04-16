@@ -27,6 +27,7 @@ const AdminChatPage = () => {
 
   const sendReply = async () => {
     if (!selected || !replyText.trim()) return;
+
     try {
       await api.patch(`/api/admin/contact-messages/${selected.id}/`, {
         admin_reply: replyText.trim(),
@@ -41,51 +42,53 @@ const AdminChatPage = () => {
   };
 
   return (
-    <div>
-      <h2>Admin Chat</h2>
-      <p>{status}</p>
-      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 12 }}>
-        <div style={{ border: "1px solid #ddd", padding: 10 }}>
-          <h3>Users</h3>
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-white/80 bg-white/85 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Admin chat</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">Reply to support conversations from one inbox.</h1>
+        <p className="mt-4 text-sm text-slate-500">{status}</p>
+      </section>
+      <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+        <div className="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+          <h3 className="text-lg font-semibold text-slate-900">Users</h3>
           {messages.map((m) => (
             <button
               key={m.id}
               onClick={() => setSelectedId(m.id)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                marginBottom: 8,
-                padding: 8,
-                border: selectedId === m.id ? "2px solid #2563eb" : "1px solid #ccc",
-                background: "#fff",
-              }}
+              className={`mt-3 block w-full rounded-2xl px-4 py-4 text-left transition ${
+                selectedId === m.id
+                  ? "border-2 border-teal-500 bg-teal-50"
+                  : "border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+              }`}
+              type="button"
             >
-              <div><strong>{m.username}</strong></div>
-              <div>{m.is_resolved ? "Resolved" : "Open"}</div>
+              <div className="font-semibold text-slate-900">{m.username}</div>
+              <div className="mt-1 text-sm text-slate-500">{m.is_resolved ? "Resolved" : "Open"}</div>
             </button>
           ))}
-          {!messages.length ? <p>No messages yet.</p> : null}
+          {!messages.length ? <p className="mt-4 text-sm text-slate-500">No messages yet.</p> : null}
         </div>
 
-        <div style={{ border: "1px solid #ddd", padding: 12 }}>
+        <div className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
           {!selected ? (
-            <p>Select a chat from the left.</p>
+            <p className="text-sm text-slate-500">Select a chat from the left.</p>
           ) : (
             <>
-              <h3>Conversation with {selected.username}</h3>
-              <div style={{ marginBottom: 10, padding: 10, border: "1px solid #eee" }}>
-                <p><strong>User:</strong> {selected.message}</p>
-                <p><strong>Admin:</strong> {selected.admin_reply || "No reply yet"}</p>
+              <h3 className="text-2xl font-semibold tracking-tight text-slate-900">Conversation with {selected.username}</h3>
+              <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                <p className="text-sm leading-7 text-slate-700"><strong className="text-slate-900">User:</strong> {selected.message}</p>
+                <p className="mt-3 text-sm leading-7 text-slate-700"><strong className="text-teal-700">Admin:</strong> {selected.admin_reply || "No reply yet"}</p>
               </div>
               <textarea
+                className="rb-field mt-5 min-h-40"
                 rows={5}
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder="Type your reply to the user..."
-                style={{ width: "100%" }}
               />
-              <button onClick={sendReply}>Send Reply and Resolve</button>
+              <button className="rb-btn-primary mt-4" onClick={sendReply} type="button">
+                Send Reply and Resolve
+              </button>
             </>
           )}
         </div>
