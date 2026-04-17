@@ -1,8 +1,9 @@
 import { NavLink } from "react-router-dom";
 
-const navLinkClass = (isActive) =>
+const navLinkClass = (isActive, isCollapsed) =>
   [
-    "flex items-center justify-between rounded-2xl border px-4 py-3 transition duration-200",
+    "relative flex items-center overflow-visible rounded-2xl border px-4 py-3 transition duration-200",
+    isCollapsed ? "justify-center px-3" : "justify-between",
     isActive
       ? "border-teal-600 bg-teal-600 text-white shadow-[0_18px_40px_rgba(13,148,136,0.22)]"
       : "border-transparent bg-white/70 text-slate-700 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800",
@@ -14,24 +15,33 @@ const iconClass = (isActive) =>
     isActive ? "bg-white/18 text-white" : "bg-slate-900 text-white group-hover:bg-teal-600",
   ].join(" ");
 
-export const SidebarLinks = ({ navItems }) => {
+export const SidebarLinks = ({ isCollapsed, navItems }) => {
   return (
     <>
       {navItems.map((item) => (
         <NavLink key={item.to} to={item.to}>
           {({ isActive }) => (
-            <div className={`group ${navLinkClass(isActive)}`}>
-              <span className="flex min-w-0 items-center gap-3">
+            <div className={`group ${navLinkClass(isActive, isCollapsed)}`}>
+              <span className={`flex min-w-0 items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
                 <span className={iconClass(isActive)}>{item.icon}</span>
-                <span className="min-w-0">
-                  <span className="block text-[15px] font-semibold">{item.label}</span>
-                  {item.description ? (
-                    <span className={`mt-0.5 block text-xs ${isActive ? "text-white/80" : "text-slate-500 group-hover:text-teal-700"}`}>
-                      {item.description}
-                    </span>
-                  ) : null}
-                </span>
+                {!isCollapsed ? (
+                  <span className="min-w-0">
+                    <span className="block text-[15px] font-semibold">{item.label}</span>
+                    {item.description ? (
+                      <span className={`mt-0.5 block text-xs ${isActive ? "text-white/80" : "text-slate-500 group-hover:text-teal-700"}`}>
+                        {item.description}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
               </span>
+
+              {isCollapsed ? (
+                <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-3 hidden w-max min-w-48 -translate-y-1/2 translate-x-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-left text-white opacity-0 shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition duration-200 group-hover:translate-x-0 group-hover:opacity-100 lg:block">
+                  <span className="block text-sm font-semibold">{item.label}</span>
+                  {item.description ? <span className="mt-1 block text-xs leading-6 text-slate-300">{item.description}</span> : null}
+                </span>
+              ) : null}
             </div>
           )}
         </NavLink>
@@ -40,31 +50,79 @@ export const SidebarLinks = ({ navItems }) => {
   );
 };
 
-const Sidebar = ({ navItems, onLogout, user }) => {
+const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) => {
   const adminLabel = user?.is_platform_admin || user?.is_staff ? "Admin access" : "Workspace";
 
   return (
-    <aside className="rounded-[2rem] border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:w-72 lg:flex-shrink-0">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Resume Builder</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{adminLabel}</h1>
-        </div>
-        <div className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">Live</div>
+    <aside
+      className={[
+        "relative rounded-[2rem] border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:flex-shrink-0",
+        isCollapsed ? "lg:w-[5.75rem]" : "lg:w-72",
+      ].join(" ")}
+    >
+      <div className={`mb-6 flex ${isCollapsed ? "justify-center" : "items-start justify-between gap-3"}`}>
+        {!isCollapsed ? (
+          <>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Resume Builder</p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{adminLabel}</h1>
+            </div>
+            <div className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">Live</div>
+          </>
+        ) : null}
+
+        {/* Keep the collapse toggle obvious so editing pages can reclaim space quickly. */}
+        <button
+          className={`inline-flex items-center justify-center rounded-2xl border border-slate-200/90 bg-white/90 text-sm font-semibold text-slate-700 shadow-[0_10px_25px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800 ${
+            isCollapsed ? "h-11 w-11" : "h-11 gap-2 px-3 lg:absolute lg:right-4 lg:top-4"
+          }`}
+          onClick={onToggleCollapse}
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          type="button"
+        >
+          {!isCollapsed ? <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Space</span> : null}
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-900 text-white">
+            <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+              <path
+                d={isCollapsed ? "M6 3.5L10.5 8L6 12.5" : "M10 3.5L5.5 8L10 12.5"}
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.75"
+              />
+            </svg>
+          </span>
+        </button>
       </div>
 
       <nav className="grid gap-2">
-        <SidebarLinks navItems={navItems} />
+        <SidebarLinks isCollapsed={isCollapsed} navItems={navItems} />
       </nav>
 
-      <div className="mt-6 rounded-3xl bg-slate-900 p-4 text-white">
-        <p className="text-xs uppercase tracking-[0.22em] text-slate-300">Signed in as</p>
-        <p className="mt-2 text-lg font-semibold">{user?.username}</p>
-        <p className="mt-1 text-sm text-slate-300">{user?.email || "Account connected"}</p>
-      </div>
+      {!isCollapsed ? (
+        <div className="mt-6 rounded-3xl bg-slate-900 p-4 text-white">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-300">Signed in as</p>
+          <p className="mt-2 text-lg font-semibold">{user?.username}</p>
+          <p className="mt-1 text-sm text-slate-300">{user?.email || "Account connected"}</p>
+        </div>
+      ) : (
+        <div className="mt-6 flex justify-center">
+          <div
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white"
+            title={user?.username || "Account connected"}
+          >
+            {(user?.username || "U").slice(0, 2).toUpperCase()}
+          </div>
+        </div>
+      )}
 
-      <button className="rb-btn-secondary mt-6 w-full" onClick={onLogout} type="button">
-        Logout
+      <button
+        className={`rb-btn-secondary mt-6 ${isCollapsed ? "w-full px-0" : "w-full"}`}
+        onClick={onLogout}
+        title={isCollapsed ? "Logout" : undefined}
+        type="button"
+      >
+        {isCollapsed ? "Out" : "Logout"}
       </button>
     </aside>
   );

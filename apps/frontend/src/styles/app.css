@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -61,5 +62,81 @@ textarea {
 
   .rb-field {
     @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100;
+  }
+
+  .rb-resume-page {
+    width: 100%;
+    max-width: 794px;
+    min-height: 1123px;
+    border: 1px solid rgb(203 213 225);
+    background: white;
+    padding: 56px 52px;
+    box-shadow: 0 25px 45px rgba(15, 23, 42, 0.12);
+    font-family: "IBM Plex Sans", "Inter", "Segoe UI", sans-serif;
+  }
+
+  .rb-resume-name {
+    font-family: "IBM Plex Sans", "Inter", "Segoe UI", sans-serif;
+    font-size: 2.05rem;
+    font-weight: 700;
+    letter-spacing: 0.015em;
+    color: #0f172a;
+  }
+
+  .rb-resume-roleline {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: #475569;
+  }
+
+  .rb-resume-contact {
+    font-size: 12.5px;
+    line-height: 1.9;
+    letter-spacing: 0.01em;
+    color: #475569;
+  }
+
+  .rb-resume-section-title {
+    border-bottom: 1px solid rgb(203 213 225);
+    padding-bottom: 0.5rem;
+    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #475569;
+  }
+
+  .rb-resume-body {
+    font-size: 12.75px;
+    line-height: 1.9;
+    letter-spacing: 0.01em;
+    color: #334155;
+  }
+
+  .rb-resume-item-title {
+    font-family: "IBM Plex Sans", "Inter", "Segoe UI", sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .rb-resume-item-meta {
+    font-size: 12.75px;
+    line-height: 1.7;
+    letter-spacing: 0.01em;
+    color: #334155;
+  }
+
+  .rb-resume-item-date {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #64748b;
   }
 }

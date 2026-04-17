@@ -1,5 +1,8 @@
 import { useState } from "react";
+import FieldGroup from "../components/ui/FieldGroup";
 import api from "../services/api/client";
+import PageIntro from "../components/ui/PageIntro";
+import Panel from "../components/ui/Panel";
 
 const JobInputPage = () => {
   const [form, setForm] = useState({ source_type: "manual", job_link: "", raw_text: "" });
@@ -16,15 +19,13 @@ const JobInputPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-white/80 bg-white/85 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Job input</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">Add the role you want to target.</h1>
-        <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
-          Save a pasted job description or a job post link. The backend logic stays the same; this screen simply makes the choice clearer.
-        </p>
-      </section>
+      <PageIntro
+        description="Save a pasted job description or a job post link. The backend logic stays the same; this screen simply makes the choice clearer."
+        eyebrow="Job input"
+        title="Add the role you want to target."
+      />
 
-      <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+      <Panel>
         <div className="grid gap-6 lg:grid-cols-[0.36fr_0.64fr]">
           <div className="space-y-3">
             <button
@@ -48,8 +49,7 @@ const JobInputPage = () => {
           </div>
 
           <div className="space-y-4 rounded-[1.75rem] bg-slate-50 p-5">
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Source type</label>
+            <FieldGroup label="Source type">
               <select
                 className="rb-field"
                 onChange={(e) => setForm({ ...form, source_type: e.target.value })}
@@ -58,32 +58,30 @@ const JobInputPage = () => {
                 <option value="manual">Manual</option>
                 <option value="link">Job Link</option>
               </select>
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Job link</label>
+            </FieldGroup>
+            <FieldGroup label="Job link">
               <input
                 className="rb-field"
                 placeholder="Job link"
                 onChange={(e) => setForm({ ...form, job_link: e.target.value })}
                 value={form.job_link}
               />
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Job description</label>
+            </FieldGroup>
+            <FieldGroup label="Job description">
               <textarea
                 className="rb-field min-h-52"
                 placeholder="Paste job description"
                 onChange={(e) => setForm({ ...form, raw_text: e.target.value })}
                 value={form.raw_text}
               />
-            </div>
+            </FieldGroup>
             <button className="rb-btn-primary w-full" onClick={submit} type="button">
               Save
             </button>
             <p className="text-sm text-slate-500">{message}</p>
           </div>
         </div>
-      </section>
+      </Panel>
     </div>
   );
 };
