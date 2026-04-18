@@ -3,38 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getApiErrorMessage } from "../lib/apiError";
 
-// Keep QA login shortcuts in one place so they stay easy to update or remove.
-const QUICK_LOGIN_ACCOUNTS = [
-  {
-    id: "admin",
-    label: "Admin Quick Login",
-    email: "admin@resume-builder.local",
-    username: "admin_demo",
-    password: "admin1234!",
-    destination: "/admin",
-    user: {
-      username: "admin_demo",
-      email: "admin@resume-builder.local",
-      is_platform_admin: true,
-      is_staff: true,
-    },
-  },
-  {
-    id: "user",
-    label: "User Quick Login",
-    email: "user@resume-builder.local",
-    username: "user_demo",
-    password: "user1234!",
-    destination: "/dashboard",
-    user: {
-      username: "user_demo",
-      email: "user@resume-builder.local",
-      is_platform_admin: false,
-      is_staff: false,
-    },
-  },
-];
-
 const CHECKPOINTS = [
   "Open your saved resume and target job details in one place.",
   "Check trial and billing status without hunting through settings.",
@@ -42,9 +10,9 @@ const CHECKPOINTS = [
 ];
 
 const LoginPage = () => {
-  const { forceLogin, login } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ username: "", password: "" });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,28 +20,21 @@ const LoginPage = () => {
     e.preventDefault();
     setError("");
 
-    if (!form.username.trim() || !form.password.trim()) {
-      setError("Enter both your username and password to continue.");
+    if (!form.email.trim() || !form.password.trim()) {
+      setError("Enter both your email and password to continue.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      await login(form.username, form.password);
+      await login(form.email, form.password);
       navigate("/dashboard");
     } catch (err) {
       setError(getApiErrorMessage(err, "We couldn't sign you in with those details."));
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleQuickLogin = (account) => {
-    setError("");
-    setForm({ username: account.username, password: account.password });
-    forceLogin(account.user);
-    navigate(account.destination);
   };
 
   return (
@@ -97,9 +58,9 @@ const LoginPage = () => {
           </div>
 
           <div className="mt-8 rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
-            <p className="text-sm font-semibold text-white">Quick login is still editable from this file.</p>
+            <p className="text-sm font-semibold text-white">Use your account email to continue.</p>
             <p className="mt-2 text-sm leading-7 text-slate-300">
-              Update or remove the `QUICK_LOGIN_ACCOUNTS` constant in `LoginPage.jsx` whenever you want.
+              Sign in with the same email you used during registration to get back into your workspace.
             </p>
           </div>
         </div>
@@ -120,13 +81,13 @@ const LoginPage = () => {
           </p>
           <div className="mt-8 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Username</label>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Email</label>
               <input
                 className="rb-field"
-                autoComplete="username"
-                placeholder="Username"
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                value={form.username}
+                autoComplete="email"
+                placeholder="name@email.com"
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                value={form.email}
               />
             </div>
             <div>
@@ -155,40 +116,6 @@ const LoginPage = () => {
             <Link className="font-semibold text-teal-700 transition hover:text-teal-800" to="/signup">
               Create one here
             </Link>
-          </div>
-
-          <div className="mt-6 border-t border-slate-200 pt-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Quick login accounts</p>
-                <p className="mt-1 text-sm text-slate-500">Useful when you want to review the UI without creating fresh test users.</p>
-              </div>
-              <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">Editable</span>
-            </div>
-            <div className="mt-4 grid gap-3">
-              {QUICK_LOGIN_ACCOUNTS.map((account) => (
-                <button
-                  className="rounded-[1.5rem] border border-slate-200 bg-white p-4 text-left transition duration-200 hover:border-teal-200 hover:bg-teal-50"
-                  key={account.id}
-                  onClick={() => handleQuickLogin(account)}
-                  type="button"
-                >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{account.label}</p>
-                      <p className="mt-1 text-sm text-slate-500">{account.email}</p>
-                    </div>
-                    <span className="inline-flex rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-                      {account.user.is_platform_admin ? "Admin" : "User"}
-                    </span>
-                  </div>
-                  <div className="mt-3 grid gap-1 text-sm text-slate-600">
-                    <p>Username: {account.username}</p>
-                    <p>Password: {account.password}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         </form>
       </div>

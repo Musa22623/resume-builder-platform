@@ -23,7 +23,7 @@ const DashboardPage = () => {
 
     // Dashboard status should stay readable even if billing data is temporarily unavailable.
     api
-      .get("/api/billing/trial/me/")
+      .get("/api/v1/billing/trial/me/")
       .then((res) => {
         if (isMounted) setTrial(res.data);
       })
