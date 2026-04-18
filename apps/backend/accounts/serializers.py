@@ -3,25 +3,80 @@ from rest_framework import serializers
 
 from accounts.models import UserProfile
 from billing.models import TrialStatus
+from django.db import transaction
+
+# from .models import UserProfile
+
+from common.constants.errors import AUTH_ERRORS
+from common.responses import success_response
 
 User = get_user_model()
 
 
-class SignUpSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
-
+class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
-        fields = ("id", "username", "email", "password")
-
-    def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        UserProfile.objects.create(user=user)
-        TrialStatus.objects.create(user=user)
-        return user
+        model = UserProfile
+        fields = (
+            "full_name",
+            "phone",
+            "country",
+            "timezone",
+            "avatar_file_path",
+        )
 
 
 class UserSerializer(serializers.ModelSerializer):
+    profile = UserProfileSerializer(read_only=True)
+
     class Meta:
         model = User
-        fields = ("id", "username", "email", "is_platform_admin")
+        fields = (
+            "id",
+            "email",
+            "role",
+            "email_verified",
+            "is_active",
+            "created_at",
+            "profile",
+        )
+
+
+class SignUpSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=8)
+    full_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    phone = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    country = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    timezone = serializers.CharField(required=False, allow_blank=True, max_length=100)
+
+    def validate_email(self, value):
+        normalized_email = User.objects.normalize_email(value).lower()
+        if User.objects.filter(email__iexact=normalized_email).exists():
+            raise serializers.ValidationError(AUTH_ERRORS["EMAIL_ALREADY_EXISTS"]["message"])
+        return normalized_email
+
+    def validate_password(self, value):
+        if len(value) < 8:
+            raise serializers.ValidationError(AUTH_ERRORS["WEEK_PASSWORD"]["message"])
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        full_name = validated_data.pop("full_name", "")
+        phone = validated_data.pop("phone", "")
+        country = validated_data.pop("country", "")
+        timezone_value = validated_data.pop("timezone", "")
+
+        user = User.objects.create_user(
+            email=validated_data["email"],
+            password=validated_data["password"],
+        )
+
+        profile = user.profile
+        profile.full_name = full_name
+        profile.phone = phone
+        profile.country = country
+        profile.timezone = timezone_value
+        profile.save()
+
+        return user

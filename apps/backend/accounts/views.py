@@ -6,6 +6,12 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from accounts.serializers import SignUpSerializer, UserSerializer
 
+from common.constants.messages import AUTH_MESSAGES
+from common.responses import success_response
+
+# from .serializers import SignUpSerializer, UserSerializer
+
+
 User = get_user_model()
 
 
@@ -15,8 +21,16 @@ class SignUpView(APIView):
     def post(self, request):
         serializer = SignUpSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         user = serializer.save()
-        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+        return success_response(
+            message=AUTH_MESSAGES["SIGNUP_SUCCESS"],
+            data={
+                "user" : UserSerializer(user).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class MeView(APIView):
