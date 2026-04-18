@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getApiErrorMessage } from "../lib/apiError";
 
 // Keep QA login shortcuts in one place so they stay easy to update or remove.
 const QUICK_LOGIN_ACCOUNTS = [
@@ -62,7 +63,7 @@ const LoginPage = () => {
       await login(form.username, form.password);
       navigate("/dashboard");
     } catch (err) {
-      setError(err?.response?.data?.detail || "We couldn't sign you in with those details.");
+      setError(getApiErrorMessage(err, "We couldn't sign you in with those details."));
     } finally {
       setIsSubmitting(false);
     }

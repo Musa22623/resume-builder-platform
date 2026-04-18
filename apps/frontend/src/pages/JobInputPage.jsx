@@ -3,6 +3,7 @@ import FieldGroup from "../components/ui/FieldGroup";
 import api from "../services/api/client";
 import PageIntro from "../components/ui/PageIntro";
 import Panel from "../components/ui/Panel";
+import { getApiErrorMessage } from "../lib/apiError";
 
 const JobInputPage = () => {
   const [form, setForm] = useState({ source_type: "manual", job_link: "", raw_text: "" });
@@ -13,7 +14,7 @@ const JobInputPage = () => {
       await api.post("/api/jobs/descriptions/", form);
       setMessage("Job description saved.");
     } catch (e) {
-      setMessage(e.response?.data?.detail || "Failed to save.");
+      setMessage(getApiErrorMessage(e, "Failed to save."));
     }
   };
 

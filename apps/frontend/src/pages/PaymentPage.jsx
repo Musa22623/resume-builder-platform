@@ -2,6 +2,7 @@ import { useState } from "react";
 import api from "../services/api/client";
 import PageIntro from "../components/ui/PageIntro";
 import Panel from "../components/ui/Panel";
+import { getApiErrorMessage } from "../lib/apiError";
 
 const PaymentPage = () => {
   const [wallets, setWallets] = useState([]);
@@ -12,7 +13,7 @@ const PaymentPage = () => {
       const { data } = await api.post("/api/billing/stripe/checkout-session/", { plan_type: planType });
       window.location.href = data.checkout_url;
     } catch (e) {
-      setStatus(e.response?.data?.detail || "Failed to start Stripe checkout.");
+      setStatus(getApiErrorMessage(e, "Failed to start Stripe checkout."));
     }
   };
 
@@ -21,8 +22,8 @@ const PaymentPage = () => {
       const { data } = await api.get("/api/billing/crypto/payment-info/");
       setWallets(data.wallets || []);
       if (!data.wallets?.length) setStatus("No crypto payment wallets configured by admin yet.");
-    } catch {
-      setStatus("Failed to load crypto payment info.");
+    } catch (e) {
+      setStatus(getApiErrorMessage(e, "Failed to load crypto payment info."));
     }
   };
 
