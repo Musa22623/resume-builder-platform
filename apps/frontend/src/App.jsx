@@ -19,7 +19,7 @@ const App = () => {
   const baseNavItems = [
     { to: "/dashboard", label: "Overview", icon: "OV", description: "Status and next steps" },
     { to: "/resume", label: "Resume Builder", icon: "RB", description: "Draft and edit content" },
-    { to: "/job", label: "Job Target", icon: "JT", description: "Paste job details" },
+    { to: "/job", label: "Target Role", icon: "TR", description: "Add the role you want to target" },
     { to: "/payment", label: "Billing", icon: "BL", description: "Plans and payment rails" },
   ];
   const adminNavItems = [
