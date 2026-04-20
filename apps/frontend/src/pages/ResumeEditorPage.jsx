@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import PageIntro from "../components/ui/PageIntro";
 import Panel from "../components/ui/Panel";
+import { getApiErrorMessage } from "../lib/apiError";
 import { createResumeDraft, uploadResumeFile } from "../services/api/resumes";
 
 const UPLOAD_ACCEPT = ".pdf,.doc,.docx,.txt";
@@ -261,7 +262,7 @@ const ResumeEditorPage = () => {
       setUploadStatus("Resume file uploaded successfully.");
       setSelectedFile(null);
     } catch (error) {
-      setUploadStatus(error?.response?.data?.file?.[0] || error?.response?.data?.detail || "Upload failed right now.");
+      setUploadStatus(getApiErrorMessage(error, "Upload failed right now."));
     } finally {
       setIsUploading(false);
     }

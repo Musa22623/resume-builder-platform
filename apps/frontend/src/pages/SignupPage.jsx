@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getApiErrorMessage } from "../lib/apiError";
 
 const ONBOARDING_STEPS = [
   "Create your account with email, username, and password.",
@@ -42,7 +43,7 @@ const SignupPage = () => {
       await login(form.username, form.password);
       navigate("/dashboard");
     } catch (err) {
-      setError(err?.response?.data?.detail || "Unable to create the account right now.");
+      setError(getApiErrorMessage(err, "Unable to create the account right now."));
     } finally {
       setIsSubmitting(false);
     }
