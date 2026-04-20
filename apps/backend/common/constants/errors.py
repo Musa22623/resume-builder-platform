@@ -3,9 +3,17 @@ AUTH_ERRORS = {
         "code": "EMAIL_ALREADY_EXISTS",
         "message": "This email is already in use.",
     },
+    "UNAUTHORIZED": {
+        "code": "UNAUTHORIZED",
+        "message": "Unauthorized.",
+    },
     "INVALID_CREDENTIALS": {
         "code": "INVALID_CREDENTIALS",
         "message": "Invalid email or password.",
+    },
+    "INVALID_INPUT": {
+        "code": "INVALID_INPUT",
+        "message": "Invalid input data.",
     },
     "AUTH_REQUIRED": {
         "code": "AUTH_REQUIRED",
@@ -14,6 +22,14 @@ AUTH_ERRORS = {
     "INVALID_REFRESH_TOKEN": {
         "code": "INVALID_REFRESH_TOKEN",
         "message": "Invalid refresh token.",
+    },
+    "TOKEN_INVALID": {
+        "code": "TOKEN_INVALID",
+        "message": "Invalid token.",
+    },
+    "TOKEN_EXPIRED": {
+        "code": "TOKEN_EXPIRED",
+        "message": "Expired token.",
     },
     "REFRESH_TOKEN_REQUIRED": {
         "code": "REFRESH_TOKEN_REQUIRED",
