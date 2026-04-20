@@ -43,4 +43,16 @@ AUTH_ERRORS = {
         "code": "WEAK_PASSWORD",
         "message": "Password must be at least 8 characters long.",
     },
+    "CONFIRM_PASSWORD": {
+        "code": "CONFIRM_PASSWORD",
+        "message": "Passwords do not match.",
+    },
+    "INVALID_UID": {
+        "code": "INVALID_UID",
+        "message": "Invalid reset link.",
+    },
+    "TOKEN": {
+        "code": "TOKEN",
+        "message": "Invalid or expired token.",
+    },
 }

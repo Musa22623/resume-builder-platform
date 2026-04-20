@@ -1,4 +1,8 @@
 from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
@@ -116,3 +120,36 @@ class CustomTokenRefreshSerializer(serializers.Serializer):
         return {
             "access_token": internal_serializer.validated_data["access"],
         }
+    
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        uid = attrs.get("uid")
+        token = attrs.get("token")
+        new_password = attrs.get("new_password")
+        confirm_password = attrs.get("confirm_password")
+
+        if new_password != confirm_password:
+            raise serializers.ValidationError(AUTH_ERRORS["CONFIRM_PASSWORD"])
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_id, is_active=True)
+        except Exception:
+            raise serializers.ValidationError(AUTH_ERRORS["INVALID_UID"])
+
+        if not default_token_generator.check_token(user, token):
+            raise serializers.ValidationError(AUTH_ERRORS["TOKEN"])
+
+        validate_password(new_password, user=user)
+
+        attrs["user"] = user
+        return attrs

@@ -146,6 +146,11 @@ SIMPLE_JWT = {
 # CORS_ALLOWED_ORIGINS = [o for o in os.getenv("BACKEND_CORS_ORIGINS", "").split(",") if o]
 CORS_ALLOW_ALL_ORIGINS = True
 
+FRONTEND_URL = "http://localhost:3000"
+DEFAULT_FROM_EMAIL = "no-reply@example.com"
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"

@@ -1,15 +1,17 @@
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from rest_framework import permissions, status
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.serializers import SignUpSerializer, UserSerializer, LoginSerializer, CustomTokenRefreshSerializer
+from accounts.serializers import SignUpSerializer, UserSerializer, LoginSerializer, CustomTokenRefreshSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
 
 from common.constants.messages import AUTH_MESSAGES
 from common.responses import success_response
+from accounts.services import send_password_reset_email
 
 # from .serializers import SignUpSerializer, UserSerializer
 
@@ -124,14 +126,40 @@ class RefreshView(APIView):
             status=status.HTTP_200_OK,
         )
     
-# class RefreshView(APIView):
-#     permission_classes = []
+class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]
 
-#     def post(self, request):
-#         serializer = CustomTokenRefreshSerializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-#         return Response({
-#             "ok": True,
-#             "data": serializer.validated_data,
-#         })
+        email = serializer.validated_data["email"]
+
+        user = User.objects.filter(email=email, is_active=True).first()
+
+        if user:
+            send_password_reset_email(user)
+
+        return success_response(
+            message=AUTH_MESSAGES["PASSWORD_RESET_LINK_SENT"],
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data["user"]
+        new_password = serializer.validated_data["new_password"]
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        return success_response(
+            message=AUTH_MESSAGES["PASSWORD_RESET_SUCCESS"],
+            status=status.HTTP_200_OK,
+        )
