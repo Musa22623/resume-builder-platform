@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../services/api/client";
+import { getUserDisplayName, getUserSecondaryText } from "../lib/userDisplay";
 
 const AdminPage = () => {
   const [users, setUsers] = useState([]);
@@ -33,8 +34,8 @@ const AdminPage = () => {
           <div className="mt-5 space-y-3">
             {users.map((u) => (
               <div className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600" key={u.id}>
-                <p className="font-semibold text-slate-900">{u.username}</p>
-                <p className="mt-1">{u.email}</p>
+                <p className="font-semibold text-slate-900">{getUserDisplayName(u)}</p>
+                <p className="mt-1">{getUserSecondaryText(u) || `User #${u.id}`}</p>
               </div>
             ))}
           </div>
@@ -46,7 +47,7 @@ const AdminPage = () => {
             {messages.map((m) => (
               <div className="rounded-[1.5rem] border border-slate-200 p-5" key={m.id}>
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-900">{m.username}</p>
+                  <p className="text-sm font-semibold text-slate-900">{getUserDisplayName(m)}</p>
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
                       m.admin_reply ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"

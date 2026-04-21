@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { getUserDisplayName, getUserInitials, getUserSecondaryText } from "../../lib/userDisplay";
 
 const navLinkClass = (isActive, isCollapsed) =>
   [
@@ -19,7 +20,7 @@ export const SidebarLinks = ({ isCollapsed, navItems }) => {
   return (
     <>
       {navItems.map((item) => (
-        <NavLink key={item.to} to={item.to}>
+        <NavLink end key={item.to} to={item.to}>
           {({ isActive }) => (
             <div className={`group ${navLinkClass(isActive, isCollapsed)}`}>
               <span className={`flex min-w-0 items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
@@ -52,6 +53,9 @@ export const SidebarLinks = ({ isCollapsed, navItems }) => {
 
 const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) => {
   const adminLabel = user?.is_platform_admin || user?.is_staff ? "Admin access" : "Workspace";
+  const displayName = getUserDisplayName(user);
+  const secondaryText = getUserSecondaryText(user);
+  const initials = getUserInitials(user);
 
   return (
     <aside
@@ -102,16 +106,16 @@ const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) =>
       {!isCollapsed ? (
         <div className="mt-6 rounded-3xl bg-slate-900 p-4 text-white">
           <p className="text-xs uppercase tracking-[0.22em] text-slate-300">Signed in as</p>
-          <p className="mt-2 text-lg font-semibold">{user?.username}</p>
-          <p className="mt-1 text-sm text-slate-300">{user?.email || "Account connected"}</p>
+          <p className="mt-2 text-lg font-semibold">{displayName}</p>
+          {secondaryText ? <p className="mt-1 text-sm text-slate-300">{secondaryText}</p> : null}
         </div>
       ) : (
         <div className="mt-6 flex justify-center">
           <div
             className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white"
-            title={user?.username || "Account connected"}
+            title={displayName}
           >
-            {(user?.username || "U").slice(0, 2).toUpperCase()}
+            {initials}
           </div>
         </div>
       )}
