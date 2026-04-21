@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { getApiErrorMessage } from "../lib/apiError";
 
 const ONBOARDING_STEPS = [
-  "Create your account with email, username, and password.",
+  "Create your account with your email address and password.",
   "Land in the dashboard right after sign-up.",
   "Start resume editing, job targeting, and billing review from one place.",
 ];
@@ -12,7 +12,7 @@ const ONBOARDING_STEPS = [
 const SignupPage = () => {
   const { login, signup } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ username: "", email: "", password: "" });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -20,8 +20,8 @@ const SignupPage = () => {
     e.preventDefault();
     setError("");
 
-    if (!form.username.trim() || !form.email.trim() || !form.password.trim()) {
-      setError("Fill in username, email, and password to create your account.");
+    if (!form.email.trim() || !form.password.trim()) {
+      setError("Fill in your email and password to create your account.");
       return;
     }
 
@@ -40,10 +40,10 @@ const SignupPage = () => {
     try {
       await signup(form);
       // New accounts should land in the main workspace immediately after registration.
-      await login(form.username, form.password);
+      await login(form.email, form.password);
       navigate("/dashboard");
     } catch (err) {
-      setError(getApiErrorMessage(err, "Unable to create the account right now."));
+      setError(getApiErrorMessage(err, "We couldn't create your account right now. Please try again in a moment."));
     } finally {
       setIsSubmitting(false);
     }
@@ -95,21 +95,11 @@ const SignupPage = () => {
           </p>
           <div className="mt-8 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Username</label>
-              <input
-                className="rb-field"
-                autoComplete="username"
-                placeholder="Username"
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                value={form.username}
-              />
-            </div>
-            <div>
               <label className="mb-2 block text-sm font-semibold text-slate-700">Email</label>
               <input
                 className="rb-field"
                 autoComplete="email"
-                placeholder="Email"
+                placeholder="name@email.com"
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 value={form.email}
               />

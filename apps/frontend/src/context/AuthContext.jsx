@@ -7,22 +7,18 @@ const DEV_LOGIN_STORAGE_KEY = "resume_builder_dev_login_user";
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
-  const login = async (username, password) => {
-    const { data } = await api.post("/api/auth/signin/", { username, password });
+  const login = async (email, password) => {
+    const { data } = await api.post("/api/v1/auth/login/", { email, password });
     localStorage.removeItem(DEV_LOGIN_STORAGE_KEY);
-    localStorage.setItem("access_token", data.access);
-    localStorage.setItem("refresh_token", data.refresh);
-    await loadMe();
+    localStorage.setItem("access_token", data.access_token);
+    localStorage.setItem("refresh_token", data.refresh_token);
+    // await loadMe();
+    console.log("login me :", data)
+    setUser(data.user);
   };
 
-  const signup = async (payload) => api.post("/api/auth/signup/", payload);
+  const signup = async (payload) => api.post("/api/v1/auth/signup/", payload);
 
-  const forceLogin = (mockUser) => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.setItem(DEV_LOGIN_STORAGE_KEY, JSON.stringify(mockUser));
-    setUser(mockUser);
-  };
 
   const logout = () => {
     localStorage.removeItem("access_token");
@@ -33,7 +29,8 @@ export const AuthProvider = ({ children }) => {
 
   const loadMe = async () => {
     try {
-      const { data } = await api.get("/api/auth/me/");
+      const { data } = await api.get("/api/v1/auth/me/");
+      console.log("me data: ", data);
       setUser(data);
     } catch {
       logout();
@@ -54,7 +51,7 @@ export const AuthProvider = ({ children }) => {
     if (localStorage.getItem("access_token")) loadMe();
   }, []);
 
-  return <AuthContext.Provider value={{ user, login, signup, logout, forceLogin }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, signup, logout }}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => useContext(AuthContext);

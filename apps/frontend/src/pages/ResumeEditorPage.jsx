@@ -115,6 +115,30 @@ const FieldHint = ({ message, tone = "neutral" }) => {
   return <p className={`mt-2 text-xs leading-5 ${tones[tone] || tones.neutral}`}>{message}</p>;
 };
 
+const SectionToggleButton = ({ isOpen, label, onClick }) => (
+  <button
+    aria-expanded={isOpen}
+    aria-label={`${isOpen ? "Collapse" : "Expand"} ${label}`}
+    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 transition duration-200 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+    onClick={onClick}
+    type="button"
+  >
+    <span>{isOpen ? "Collapse" : "Expand"}</span>
+    <svg
+      aria-hidden="true"
+      className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  </button>
+);
+
 const estimateExperienceWeight = (item) => {
   const bulletCount = item.highlights ? item.highlights.split("\n").filter(Boolean).length : 1;
   const hasLongCopy = item.highlights.length > 220 ? 1 : 0;
