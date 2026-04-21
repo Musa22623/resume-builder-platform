@@ -7,4 +7,5 @@ AUTH_MESSAGES = {
     "PASSWORD_RESET_LINK_SENT": "If the email exists, a password reset link has been sent.",
     "PASSWORD_RESET_SUCCESS": "Password has been reset successfully.",
     "REFRESH_SUCCESS": "Refresh successful.",
+    "LOGOUT_SUCCESS": "Successfully logged out.",
 }

@@ -4,6 +4,11 @@ from django.core.mail import send_mail
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
+import smtplib
+import socket
+from django.core.mail.backends.smtp import EmailBackend
+
+from email.message import EmailMessage
 
 def send_password_reset_email(user):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
@@ -32,3 +37,34 @@ def send_password_reset_email(user):
         "token": token,
         "reset_url": reset_url,
     }
+
+class UnverifiedSMTPEmailBackend(EmailBackend):
+    def send_messages(self, email_messages):
+        # smtp_host = 'smtp.gmail.com'
+        # smtp_port = 587
+        # username = 'kwokhoiyan862@gmail.com'
+        # password = 'aitsacpjzydevtug'
+        print(email_messages)
+        try:
+            with smtplib.SMTP(self.host , self.port, timeout=30) as server:
+                server.starttls()  # TLS 연결 시작
+                server.login(self.username, self.password)  # 로그인
+                for email_message in email_messages:
+                        #     # 이메일 메시지에 대한 실제 발송 처리
+                    if hasattr(email_message, 'recipients'):
+                        recipients = email_message.recipients()
+                        # print(f"Sending email to: {recipients}")
+                        # print(email_message.from_email + ":" + recipients[0])
+                        msg = EmailMessage()
+                        msg.set_content(email_message.message())
+                        msg['Subject'] = 'Test Email from Python'
+                        msg['From'] = settings.DEFAULT_FROM_EMAIL
+                        msg['To'] = recipients[0]  # 수신자 이메일로 변경
+                        server.send_message(msg, settings.DEFAULT_FROM_EMAIL)
+                        # connection.sendmail(email_message.from_email, recipients, email_message.message())
+                    else:
+                        print("Email message object does not have recipients method.")
+                print("Email sent successfully!")
+        except Exception as e:
+            print(f"Error: {e}")
+        return len(email_messages)  # 보낸 이메일의 개수를 반환
