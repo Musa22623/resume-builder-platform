@@ -147,7 +147,7 @@ SIMPLE_JWT = {
 # CORS_ALLOWED_ORIGINS = [o for o in os.getenv("BACKEND_CORS_ORIGINS", "").split(",") if o]
 CORS_ALLOW_ALL_ORIGINS = True
 
-FRONTEND_URL = "http://localhost:3000"
+FRONTEND_URL = "http://localhost:5173"
 
 # EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
