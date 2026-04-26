@@ -22,4 +22,7 @@ class UploadedFile(models.Model):
     resume = models.ForeignKey(Resume, on_delete=models.CASCADE, related_name="uploads")
     file = models.FileField(upload_to="resumes/")
     mime_type = models.CharField(max_length=120)
+    extracted_text = models.TextField(blank=True)
+    parsed_content_json = models.JSONField(default=dict, blank=True)
+    parsed_at = models.DateTimeField(null=True, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)

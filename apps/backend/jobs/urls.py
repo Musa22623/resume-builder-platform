@@ -1,9 +1,24 @@
-from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 
 from jobs.views import JobDescriptionViewSet
 
-router = DefaultRouter()
-router.register("descriptions", JobDescriptionViewSet, basename="jobs")
+job_description_list = JobDescriptionViewSet.as_view(
+    {
+        "get": "list",
+        "post": "create",
+    }
+)
 
-urlpatterns = [path("", include(router.urls))]
+job_description_detail = JobDescriptionViewSet.as_view(
+    {
+        "get": "retrieve",
+        "put": "update",
+        "patch": "partial_update",
+        "delete": "destroy",
+    }
+)
+
+urlpatterns = [
+    path("descriptions/", job_description_list, name="job-description-list"),
+    path("descriptions/<int:pk>/", job_description_detail, name="job-description-detail"),
+]

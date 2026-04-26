@@ -5,12 +5,15 @@ from rest_framework.views import APIView
 
 from billing.models import Payment, SubscriptionPlan, TrialStatus, UserSubscription
 from billing.serializers import (
+    AccessStatusSerializer,
     PaymentSerializer,
     SubscriptionPlanSerializer,
     TrialStatusSerializer,
     UserSubscriptionSerializer,
 )
-from billing.services import build_crypto_payment_info, create_stripe_checkout_session
+from billing.services import build_crypto_payment_info, create_stripe_checkout_session, get_user_access_status
+from common.constants.messages import BILLING_MESSAGES
+from common.responses import success_response
 
 
 class SubscriptionPlanViewSet(viewsets.ModelViewSet):
@@ -76,3 +79,15 @@ class CryptoPaymentInfoView(APIView):
     def get(self, request):
         info = build_crypto_payment_info()
         return Response({"wallets": info})
+
+
+class AccessStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        payload = get_user_access_status(request.user)
+        return success_response(
+            message=BILLING_MESSAGES["ACCESS_STATUS_SUCCESS"],
+            data=AccessStatusSerializer(payload).data,
+            status=status.HTTP_200_OK,
+        )

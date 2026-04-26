@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from rest_framework import permissions, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -10,10 +10,16 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from accounts.serializers import SignUpSerializer, UserSerializer, LoginSerializer, CustomTokenRefreshSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
 
 from common.constants.messages import AUTH_MESSAGES
-from common.responses import success_response
+from common.constants.errors import AUTH_ERRORS
+from common.responses import success_response, error_response
 from accounts.services import send_password_reset_email
 
-# from .serializers import SignUpSerializer, UserSerializer
+import smtplib
+from email.message import EmailMessage
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 User = get_user_model()
@@ -75,6 +81,7 @@ class LoginView(APIView):
     permission_classes = []
 
     def post(self, request):
+        
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -139,7 +146,6 @@ class ForgotPasswordView(APIView):
 
         if user:
             send_password_reset_email(user)
-
         return success_response(
             message=AUTH_MESSAGES["PASSWORD_RESET_LINK_SENT"],
             status=status.HTTP_200_OK,
@@ -163,3 +169,42 @@ class ResetPasswordView(APIView):
             message=AUTH_MESSAGES["PASSWORD_RESET_SUCCESS"],
             status=status.HTTP_200_OK,
         )
+    
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            # Get JWT Token (Through Authorization from Header)
+            refresh_token = request.data.get('refresh_token')
+
+            if not refresh_token:
+                return error_response(
+                    error={
+                        "code": "Required Refresh Token.",
+                        "message": "Refresh token is required.",
+                    }, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            logger.info("Logout:" + str(refresh_token))
+            # Validate Refresh Token and Add to BlackList
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            logger.info("Logout_token:")
+
+
+            return success_response(
+                message=AUTH_MESSAGES["LOGOUT_SUCCESS"],
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return error_response(
+                error={
+                    "code": "INTERNAL_SERVER_ERROR",
+                    "message": f"Error logging out: {str(e)}",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

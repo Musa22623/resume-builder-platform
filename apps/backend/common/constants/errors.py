@@ -5,7 +5,7 @@ AUTH_ERRORS = {
     },
     "UNAUTHORIZED": {
         "code": "UNAUTHORIZED",
-        "message": "Unauthorized.",
+        "message": "Authorization header is required.",
     },
     "INVALID_CREDENTIALS": {
         "code": "INVALID_CREDENTIALS",

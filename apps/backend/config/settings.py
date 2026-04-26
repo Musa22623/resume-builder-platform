@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     # "accounts",
     'accounts.apps.AccountsConfig',
     "resumes",
@@ -137,7 +138,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
@@ -147,9 +148,38 @@ SIMPLE_JWT = {
 CORS_ALLOW_ALL_ORIGINS = True
 
 FRONTEND_URL = "http://localhost:3000"
+
+# EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_BACKEND = 'accounts.services.UnverifiedSMTPEmailBackend'
+
+EMAIL_HOST = 'smtp.gmail.com'  # Gmail SMTP Server
+EMAIL_PORT = 587  # normally using port
+EMAIL_USE_TLS = True  # Setting Security using TLS
+EMAIL_HOST_USER = 'kwokhoiyan862@gmail.com'  # Sending email address
+EMAIL_HOST_PASSWORD = 'aitsacpjzydevtug'  # Sending email password
 DEFAULT_FROM_EMAIL = "no-reply@example.com"
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
 
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
