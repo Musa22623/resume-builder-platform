@@ -10,6 +10,7 @@ import HomePage from "./pages/HomePage";
 import JobInputPage from "./pages/JobInputPage";
 import LoginPage from "./pages/LoginPage";
 import PaymentPage from "./pages/PaymentPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ResumeEditorPage from "./pages/ResumeEditorPage";
 import SignupPage from "./pages/SignupPage";
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -34,6 +35,8 @@ const App = () => {
       <Routes>
         <Route path="/" element={<PublicLayout logout={logout} user={user}><HomePage /></PublicLayout>} />
         <Route path="/login" element={<PublicLayout logout={logout} user={user}><LoginPage /></PublicLayout>} />
+        <Route path="/reset-password" element={<PublicLayout logout={logout} user={user}><ResetPasswordPage /></PublicLayout>} />
+        <Route path="/reset-password/:uid/:token" element={<PublicLayout logout={logout} user={user}><ResetPasswordPage /></PublicLayout>} />
         <Route path="/signup" element={<PublicLayout logout={logout} user={user}><SignupPage /></PublicLayout>} />
         <Route
           path="/dashboard"

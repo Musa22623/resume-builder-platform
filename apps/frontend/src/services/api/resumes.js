@@ -14,8 +14,34 @@ export const prepareResumeDraftPayload = (payload) => ({
 
 export const createResumeDraft = async (payload) => {
   const nextPayload = prepareResumeDraftPayload(payload);
-  const { data } = await api.post("/api/resumes/items/", nextPayload);
+  const { data } = await api.post("/api/v1/resumes/items/", nextPayload);
   return { data, nextPayload };
+};
+
+export const listResumes = async () => {
+  const { data } = await api.get("/api/v1/resumes/items/");
+  return data.items || [];
+};
+
+export const getResumeDetail = async (resumeId) => {
+  const { data } = await api.get(`/api/v1/resumes/items/${resumeId}/`);
+  return data.resume || data;
+};
+
+export const autosaveResumeDraft = async (resumeId, payload) => {
+  const nextPayload = prepareResumeDraftPayload(payload);
+  const { data } = await api.post(`/api/v1/resumes/items/${resumeId}/autosave/`, {
+    "content_json": nextPayload.content_json,
+  });
+  return { data, nextPayload };
+};
+
+export const updateResumeDraftMeta = async (resumeId, payload) => {
+  const { data } = await api.patch(`/api/v1/resumes/items/${resumeId}/`, {
+    "title": payload.title,
+    "is_draft": payload.is_draft,
+  });
+  return data.resume || data;
 };
 
 export const uploadResumeFile = async (resumeId, file) => {
@@ -23,11 +49,23 @@ export const uploadResumeFile = async (resumeId, file) => {
   formData.append("resume", String(resumeId));
   formData.append("file", file);
 
-  const { data } = await api.post("/api/resumes/uploads/", formData, {
+  const { data } = await api.post("/api/v1/resumes/uploads/", formData, {
     headers: {
       "Content-Type": "multipart/form-data",
     },
   });
 
+  return data;
+};
+
+export const parseResumeUpload = async (uploadId) => {
+  const { data } = await api.post(`/api/v1/resumes/uploads/${uploadId}/parse/`);
+  return data;
+};
+
+export const applyParsedResumeUpload = async (uploadId, createVersion = true) => {
+  const { data } = await api.post(`/api/v1/resumes/uploads/${uploadId}/apply-parsed/`, {
+    "create_version": createVersion,
+  });
   return data;
 };

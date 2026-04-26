@@ -12,8 +12,6 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem(DEV_LOGIN_STORAGE_KEY);
     localStorage.setItem("access_token", data.access_token);
     localStorage.setItem("refresh_token", data.refresh_token);
-    // await loadMe();
-    console.log("login me :", data)
     setUser(data.user);
   };
 
@@ -30,12 +28,21 @@ export const AuthProvider = ({ children }) => {
   const loadMe = async () => {
     try {
       const { data } = await api.get("/api/v1/auth/me/");
-      console.log("me data: ", data);
-      setUser(data);
+      setUser(data.user || data);
     } catch {
       logout();
     }
   };
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      localStorage.removeItem(DEV_LOGIN_STORAGE_KEY);
+      setUser(null);
+    };
+
+    window.addEventListener("auth:session-expired", handleSessionExpired);
+    return () => window.removeEventListener("auth:session-expired", handleSessionExpired);
+  }, []);
 
   useEffect(() => {
     const devLoginUser = localStorage.getItem(DEV_LOGIN_STORAGE_KEY);

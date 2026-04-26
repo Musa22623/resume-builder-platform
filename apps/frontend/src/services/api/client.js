@@ -6,6 +6,42 @@ const api = axios.create({
   baseURL: apiBaseUrl,
 });
 
+let refreshRequest = null;
+
+const clearStoredTokens = () => {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+};
+
+const refreshAccessToken = async () => {
+  const refreshToken = localStorage.getItem("refresh_token");
+
+  if (!refreshToken) {
+    throw new Error("Missing refresh token");
+  }
+
+  if (!refreshRequest) {
+    refreshRequest = axios
+      .post(`${apiBaseUrl}/api/v1/auth/refresh/`, { "refresh_token": refreshToken })
+      .then((response) => {
+        const payload = response.data?.data || response.data;
+        const accessToken = payload?.access_token;
+
+        if (!accessToken) {
+          throw new Error("Refresh response did not include an access token");
+        }
+
+        localStorage.setItem("access_token", accessToken);
+        return accessToken;
+      })
+      .finally(() => {
+        refreshRequest = null;
+      });
+  }
+
+  return refreshRequest;
+};
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -23,7 +59,12 @@ api.interceptors.response.use(
 
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    const status = error?.response?.status;
+    const requestUrl = originalRequest?.url || "";
+    const isAuthRequest = requestUrl.includes("/api/v1/auth/");
+    const canRefreshRequest = !isAuthRequest || requestUrl.includes("/api/v1/auth/me/");
     const payload = error?.response?.data;
 
     if (payload && typeof payload === "object" && payload.success === false && payload.error) {
@@ -31,6 +72,23 @@ api.interceptors.response.use(
         ...payload.error,
         detail: payload.error.message,
       };
+    }
+
+    if (status === 401 && canRefreshRequest && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const accessToken = await refreshAccessToken();
+        originalRequest.headers = {
+          ...originalRequest.headers,
+          Authorization: `Bearer ${accessToken}`,
+        };
+        return api(originalRequest);
+      } catch (refreshError) {
+        clearStoredTokens();
+        window.dispatchEvent(new Event("auth:session-expired"));
+        return Promise.reject(refreshError);
+      }
     }
 
     return Promise.reject(error);

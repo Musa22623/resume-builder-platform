@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getApiErrorMessage } from "../lib/apiError";
+import api from "../services/api/client";
 
 const CHECKPOINTS = [
   "Open your saved resume and target job details in one place.",
@@ -9,12 +10,19 @@ const CHECKPOINTS = [
   "Pick up from dashboard, resume builder, or payment in a single step.",
 ];
 
+const forgotPanelId = "forgot-password-panel";
+
 const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
+  const [forgotEmail, setForgotEmail] = useState("");
   const [error, setError] = useState("");
+  const [forgotError, setForgotError] = useState("");
+  const [forgotSuccess, setForgotSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -37,6 +45,41 @@ const LoginPage = () => {
     }
   };
 
+  const onForgotPassword = async () => {
+    const email = forgotEmail.trim();
+
+    setForgotError("");
+    setForgotSuccess("");
+
+    if (!email) {
+      setForgotError("Enter your account email so we can send reset instructions.");
+      return;
+    }
+
+    setIsForgotSubmitting(true);
+
+    try {
+      const response = await api.post("/api/v1/auth/forgot-password/", { "email": email });
+      setForgotSuccess(response.message || "If an account exists for that email, reset instructions are on the way.");
+    } catch (err) {
+      setForgotError(getApiErrorMessage(err, "We couldn't send reset instructions right now."));
+    } finally {
+      setIsForgotSubmitting(false);
+    }
+  };
+
+  const toggleForgotPassword = () => {
+    setShowForgotPassword((current) => {
+      const next = !current;
+      if (next && !forgotEmail && form.email) {
+        setForgotEmail(form.email);
+      }
+      setForgotError("");
+      setForgotSuccess("");
+      return next;
+    });
+  };
+
   return (
     <div className="mx-auto flex min-h-[calc(100vh-9rem)] max-w-7xl items-center px-4 py-10 lg:px-6">
       <div className="grid w-full gap-6 lg:grid-cols-[0.95fr_1.05fr]">
@@ -44,8 +87,7 @@ const LoginPage = () => {
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-300">Sign in</p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight">Return to your resume workspace without losing momentum.</h1>
           <p className="mt-4 text-sm leading-7 text-slate-300">
-            The web MVP is meant to get users back into editing quickly. Sign in to continue resume updates, review job targets, and
-            check access status from the dashboard.
+            Sign in to continue updating your resume, reviewing job targets, and checking access details from the dashboard.
           </p>
 
           <div className="mt-8 space-y-3">
@@ -77,7 +119,7 @@ const LoginPage = () => {
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Dashboard first</span>
           </div>
           <p className="mt-4 text-sm leading-7 text-slate-500">
-            Use your account details below, or jump in with one of the editable QA accounts for layout review.
+            Use the account details you created during signup to get back into your workspace.
           </p>
           <div className="mt-8 space-y-4">
             <div>
@@ -91,7 +133,24 @@ const LoginPage = () => {
               />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Password</label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block text-sm font-semibold text-slate-700">Password</label>
+                <button
+                  aria-controls={forgotPanelId}
+                  aria-expanded={showForgotPassword}
+                  className="inline-flex items-center gap-2 rounded-full px-2 py-1 text-sm font-semibold text-teal-700 transition hover:bg-teal-50 hover:text-teal-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-teal-100"
+                  onClick={toggleForgotPassword}
+                  type="button"
+                >
+                  Forgot password?
+                  <span
+                    className={`text-base leading-none transition-transform duration-300 ${showForgotPassword ? "rotate-45" : ""}`}
+                    aria-hidden="true"
+                  >
+                    +
+                  </span>
+                </button>
+              </div>
               <input
                 className="rb-field"
                 type="password"
@@ -100,6 +159,47 @@ const LoginPage = () => {
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 value={form.password}
               />
+            </div>
+          </div>
+          <div
+            className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
+              showForgotPassword ? "mt-5 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0"
+            }`}
+            id={forgotPanelId}
+          >
+            <div className="overflow-hidden">
+              <div className="rounded-[1.5rem] border border-teal-100 bg-gradient-to-br from-teal-50 to-cyan-50/70 p-5 shadow-[0_16px_40px_rgba(20,184,166,0.12)]">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Reset your password</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">Enter your account email and we'll send reset instructions.</p>
+                  </div>
+                  <span className="w-fit rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-teal-700 shadow-sm">
+                    Email link
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <input
+                    className="rb-field border-teal-100 bg-white"
+                    autoComplete="email"
+                    placeholder="name@email.com"
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    value={forgotEmail}
+                  />
+                  <button
+                    className="rb-btn-dark whitespace-nowrap disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                    disabled={isForgotSubmitting}
+                    onClick={onForgotPassword}
+                    type="button"
+                  >
+                    {isForgotSubmitting ? "Sending..." : "Send reset link"}
+                  </button>
+                </div>
+                {forgotError ? <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{forgotError}</p> : null}
+                {forgotSuccess ? (
+                  <p className="mt-3 rounded-2xl bg-white/80 px-4 py-3 text-sm font-medium text-teal-800">{forgotSuccess}</p>
+                ) : null}
+              </div>
             </div>
           </div>
           <button

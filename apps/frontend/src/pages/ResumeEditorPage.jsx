@@ -1,10 +1,104 @@
-import { useMemo, useState } from "react";
-import PageIntro from "../components/ui/PageIntro";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Panel from "../components/ui/Panel";
+import PageTitleBar from "../components/ui/PageTitleBar";
 import { getApiErrorMessage } from "../lib/apiError";
-import { createResumeDraft, uploadResumeFile } from "../services/api/resumes";
+import {
+  autosaveResumeDraft,
+  createResumeDraft,
+  getResumeDetail,
+  listResumes,
+  parseResumeUpload,
+  updateResumeDraftMeta,
+  uploadResumeFile,
+} from "../services/api/resumes";
 
 const UPLOAD_ACCEPT = ".pdf,.doc,.docx,.txt";
+const UPLOAD_EXTENSIONS = UPLOAD_ACCEPT.split(",");
+const uploadInputId = "resume-upload-input";
+
+const formatFileSize = (size) => {
+  if (!size) return "0 KB";
+  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getResumeFileError = (file) => {
+  if (!file) return "";
+
+  const fileName = file.name.toLowerCase();
+  const isAllowed = UPLOAD_EXTENSIONS.some((extension) => fileName.endsWith(extension));
+
+  return isAllowed ? "" : "Choose a PDF, DOC, DOCX, or TXT file.";
+};
+
+const normalizeExperienceItem = (item = {}) => ({
+  role: item.role || "",
+  company: item.company || "",
+  employmentType: item.employmentType || item.employment_type || "",
+  location: item.location || "",
+  startDate: item.startDate || item.start_date || "",
+  endDate: item.endDate || item.end_date || "",
+  isCurrent: Boolean(item.isCurrent || item.is_current),
+  highlights: Array.isArray(item.highlights) ? item.highlights.join("\n") : item.highlights || "",
+});
+
+const normalizeEducationItem = (item = {}) => ({
+  school: item.school || "",
+  degree: item.degree || "",
+  field: item.field || "",
+  startDate: item.startDate || item.start_date || "",
+  endDate: item.endDate || item.end_date || "",
+});
+
+const normalizeResumeContent = (content = {}) => ({
+  name: content.name || content.basics?.name || "",
+  headline: content.headline || content.basics?.headline || "",
+  summary: content.summary || content.basics?.summary || "",
+  skills: Array.isArray(content.skills)
+    ? content.skills.map((item) => (typeof item === "string" ? item : item?.name)).filter(Boolean)
+    : [],
+  contact_details: {
+    email: content.contact_details?.email || content.basics?.email || "",
+    phone: content.contact_details?.phone || content.basics?.phone || "",
+    location: content.contact_details?.location || content.basics?.location || "",
+    website: content.contact_details?.website || content.basics?.website || "",
+    linkedin: content.contact_details?.linkedin || content.basics?.linkedin || "",
+  },
+  experience: Array.isArray(content.experience) && content.experience.length ? content.experience.map(normalizeExperienceItem) : [createExperienceItem()],
+  education: Array.isArray(content.education) && content.education.length ? content.education.map(normalizeEducationItem) : [createEducationItem()],
+  companies: Array.isArray(content.companies) ? content.companies : [],
+  dates: Array.isArray(content.dates) ? content.dates : [],
+});
+
+const createEmptyPayload = () => ({
+  title: "",
+  source_type: "manual",
+  content_json: {
+    name: "",
+    headline: "",
+    summary: "",
+    skills: [],
+    contact_details: {
+      email: "",
+      phone: "",
+      location: "",
+      website: "",
+      linkedin: "",
+    },
+    experience: [createExperienceItem()],
+    education: [createEducationItem()],
+    companies: [],
+    dates: [],
+  },
+  is_draft: true,
+});
+
+const resumeToPayload = (resume) => ({
+  title: resume?.title || "",
+  source_type: resume?.source_type || "manual",
+  content_json: normalizeResumeContent(resume?.content_json || {}),
+  is_draft: resume?.is_draft ?? true,
+});
 
 const createExperienceItem = () => ({
   role: "",
@@ -108,6 +202,7 @@ const MoveActionButton = ({ direction, label, onClick, disabled = false }) => (
 
 const FieldHint = ({ message, tone = "neutral" }) => {
   const tones = {
+    error: "text-rose-600",
     neutral: "text-slate-500",
     warning: "text-amber-600",
   };
@@ -119,14 +214,14 @@ const SectionToggleButton = ({ isOpen, label, onClick }) => (
   <button
     aria-expanded={isOpen}
     aria-label={`${isOpen ? "Collapse" : "Expand"} ${label}`}
-    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 transition duration-200 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
     onClick={onClick}
+    title={`${isOpen ? "Collapse" : "Expand"} ${label}`}
     type="button"
   >
-    <span>{isOpen ? "Collapse" : "Expand"}</span>
     <svg
       aria-hidden="true"
-      className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+      className={`h-4 w-4 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
@@ -165,36 +260,64 @@ const isMonthYearLike = (value) => {
   return /^(?:[A-Za-z]{3,9}\s+\d{4}|\d{1,2}\/\d{4}|\d{4})$/.test(value.trim());
 };
 
+const validateManualResumePayload = (payload) => {
+  const errors = {};
+  const content = payload.content_json;
+  const contacts = content.contact_details;
+  const hasBodyContent =
+    content.summary.trim() ||
+    content.skills.length ||
+    content.experience.some((item) => item.role || item.company || item.highlights) ||
+    content.education.some((item) => item.school || item.degree || item.field);
+
+  if (!payload.title.trim()) errors.title = "Add a resume title before saving.";
+  if (!content.name.trim()) errors.name = "Add your full name.";
+  if (!contacts.email.trim()) {
+    errors.email = "Add an email address.";
+  } else if (!isLikelyEmail(contacts.email.trim())) {
+    errors.email = "Use a standard email format like name@example.com.";
+  }
+  if (contacts.website.trim() && !isLikelyLink(contacts.website.trim())) {
+    errors.website = "Use a complete website URL or domain.";
+  }
+  if (contacts.linkedin.trim() && !isLikelyLink(contacts.linkedin.trim())) {
+    errors.linkedin = "Use your public LinkedIn URL or profile path.";
+  }
+  if (!hasBodyContent) {
+    errors.body = "Add at least one content section: summary, skills, work history, or education.";
+  }
+
+  const invalidExperienceDate = content.experience.find(
+    (item) => !isMonthYearLike(item.startDate) || (!item.isCurrent && !isMonthYearLike(item.endDate)),
+  );
+  if (invalidExperienceDate) {
+    errors.experienceDates = "Fix work history dates before saving.";
+  }
+
+  const invalidEducationDate = content.education.find((item) => !isMonthYearLike(item.startDate) || !isMonthYearLike(item.endDate));
+  if (invalidEducationDate) {
+    errors.educationDates = "Fix education dates before saving.";
+  }
+
+  return errors;
+};
+
 const ResumeEditorPage = () => {
-  const [payload, setPayload] = useState({
-    title: "",
-    source_type: "manual",
-    content_json: {
-      name: "",
-      headline: "",
-      summary: "",
-      skills: [],
-      contact_details: {
-        email: "",
-        phone: "",
-        location: "",
-        website: "",
-        linkedin: "",
-      },
-      experience: [createExperienceItem()],
-      education: [createEducationItem()],
-      companies: [],
-      dates: [],
-    },
-    is_draft: true,
-  });
+  const fileInputRef = useRef(null);
+  const [payload, setPayload] = useState(createEmptyPayload);
   const [resumeId, setResumeId] = useState(null);
   const [status, setStatus] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadStatus, setUploadStatus] = useState("");
+  const [parseStatus, setParseStatus] = useState("");
+  const [loadStatus, setLoadStatus] = useState("");
+  const [validationErrors, setValidationErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isDraggingUpload, setIsDraggingUpload] = useState(false);
   const [sectionVisibility, setSectionVisibility] = useState({
     profile: true,
     contact: true,
@@ -203,42 +326,134 @@ const ResumeEditorPage = () => {
     experience: true,
     education: true,
   });
-  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => JSON.stringify({
-    title: "",
-    source_type: "manual",
-    content_json: {
-      name: "",
-      headline: "",
-      summary: "",
-      skills: [],
-      contact_details: {
-        email: "",
-        phone: "",
-        location: "",
-        website: "",
-        linkedin: "",
-      },
-      experience: [createExperienceItem()],
-      education: [createEducationItem()],
-      companies: [],
-      dates: [],
-    },
-    is_draft: true,
-  }));
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => JSON.stringify(createEmptyPayload()));
+
+  const setUploadFile = (file) => {
+    if (!file) return;
+
+    const fileError = getResumeFileError(file);
+    if (fileError) {
+      setSelectedFile(null);
+      setParseStatus("");
+      setUploadStatus(fileError);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
+    setSelectedFile(file);
+    setParseStatus("");
+    setUploadStatus(`${file.name} is ready to upload.`);
+  };
+
+  const handleFileInputChange = (e) => {
+    setUploadFile(e.target.files?.[0] || null);
+  };
+
+  const handleUploadDragOver = (e) => {
+    e.preventDefault();
+    setIsDraggingUpload(true);
+  };
+
+  const handleUploadDragLeave = (e) => {
+    e.preventDefault();
+    const nextTarget = e.relatedTarget;
+    if (nextTarget instanceof Node && e.currentTarget.contains(nextTarget)) return;
+    setIsDraggingUpload(false);
+  };
+
+  const handleUploadDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingUpload(false);
+    setUploadFile(e.dataTransfer.files?.[0] || null);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadStoredDraft = async () => {
+      setIsLoadingDraft(true);
+      setLoadStatus("Checking for a saved draft...");
+
+      try {
+        const resumes = await listResumes();
+        const draft = resumes.find((item) => item.is_draft) || resumes[0];
+
+        if (!draft) {
+          if (isMounted) {
+            setLoadStatus("No saved draft found.");
+          }
+          return;
+        }
+
+        const detail = await getResumeDetail(draft.id);
+        const nextPayload = resumeToPayload(detail);
+
+        if (isMounted) {
+          setResumeId(detail.id);
+          setPayload(nextPayload);
+          setLastSavedSnapshot(JSON.stringify(nextPayload));
+          setLoadStatus(`Loaded saved draft #${detail.id}.`);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLoadStatus(getApiErrorMessage(error, "We couldn't load your saved draft right now."));
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingDraft(false);
+        }
+      }
+    };
+
+    loadStoredDraft();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const saveResume = async () => {
     setStatus("");
+    const nextValidationErrors = validateManualResumePayload(payload);
+    setValidationErrors(nextValidationErrors);
+
+    if (Object.keys(nextValidationErrors).length) {
+      setStatus("Please fix the highlighted fields before saving.");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
       // Keep protected company/date fields alongside the editable sections for downstream AI safety rules.
-      const { data, nextPayload } = await createResumeDraft(payload);
-      setResumeId(data.id);
-      setStatus("Draft saved successfully.");
-      setPayload(nextPayload);
-      setLastSavedSnapshot(JSON.stringify(nextPayload));
-    } catch {
-      setStatus("We couldn't save the draft right now.");
+      if (resumeId) {
+        const { data, nextPayload } = await autosaveResumeDraft(resumeId, payload);
+        const savedResume = data.resume || data;
+        const updatedResume = await updateResumeDraftMeta(resumeId, nextPayload);
+        const savedPayload = {
+          ...nextPayload,
+          title: updatedResume?.title || savedResume?.title || nextPayload.title,
+          source_type: updatedResume?.source_type || savedResume?.source_type || nextPayload.source_type,
+          is_draft: updatedResume?.is_draft ?? savedResume?.is_draft ?? nextPayload.is_draft,
+        };
+        setPayload(savedPayload);
+        setLastSavedSnapshot(JSON.stringify(savedPayload));
+        setStatus("Draft updated successfully.");
+        setValidationErrors({});
+      } else {
+        const { data, nextPayload } = await createResumeDraft(payload);
+        const savedResume = data.resume || data;
+        const savedPayload = resumeToPayload(savedResume?.id ? savedResume : nextPayload);
+        setResumeId(savedResume.id);
+        setStatus("Draft saved successfully.");
+        setPayload(savedPayload);
+        setLastSavedSnapshot(JSON.stringify(savedPayload));
+        setValidationErrors({});
+      }
+    } catch (error) {
+      setStatus(getApiErrorMessage(error, "We couldn't save the draft right now."));
     } finally {
       setIsSaving(false);
     }
@@ -251,10 +466,12 @@ const ResumeEditorPage = () => {
     }
 
     setUploadStatus("");
+    setParseStatus("");
     setIsUploading(true);
 
     try {
       let nextResumeId = resumeId;
+      let workingPayload = payload;
       const baseTitle = payload.title.trim() || selectedFile.name.replace(/\.[^.]+$/, "");
 
       if (!nextResumeId) {
@@ -264,27 +481,59 @@ const ResumeEditorPage = () => {
           source_type: "upload",
         };
         const { data, nextPayload } = await createResumeDraft(uploadDraftPayload);
-        nextResumeId = data.id;
-        setResumeId(data.id);
-        setPayload(nextPayload);
-        setLastSavedSnapshot(JSON.stringify(nextPayload));
+        const savedResume = data.resume || data;
+        nextResumeId = savedResume.id;
+        workingPayload = nextPayload;
+        setResumeId(nextResumeId);
       }
 
-      await uploadResumeFile(nextResumeId, selectedFile);
+      const uploadData = await uploadResumeFile(nextResumeId, selectedFile);
+      const uploadedRecord = uploadData.upload || uploadData;
+      const uploadId = uploadedRecord?.id;
       const uploadedPayload = {
-        ...payload,
-        title: payload.title || baseTitle,
+        ...workingPayload,
+        title: workingPayload.title || baseTitle,
         source_type: "upload",
       };
       setUploadedFileName(selectedFile.name);
-      setPayload((current) => ({
-        ...current,
-        title: current.title || baseTitle,
-        source_type: "upload",
-      }));
+      setPayload(uploadedPayload);
       setLastSavedSnapshot(JSON.stringify(uploadedPayload));
-      setUploadStatus("Resume file uploaded successfully.");
+      setUploadStatus(
+        uploadedRecord?.id
+          ? `Resume file uploaded successfully. Upload #${uploadedRecord.id} is ready for parsing.`
+          : "Resume file uploaded successfully.",
+      );
       setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      if (uploadId) {
+        setIsParsing(true);
+        setParseStatus("Parsing uploaded resume...");
+
+        try {
+          const parseData = await parseResumeUpload(uploadId);
+          const parsedRecord = parseData.upload || parseData;
+          const parsedContent = parsedRecord?.parsed_content_json;
+
+          if (parsedContent) {
+            const parsedPayload = {
+              ...uploadedPayload,
+              content_json: normalizeResumeContent(parsedContent),
+              source_type: "upload",
+            };
+            setPayload(parsedPayload);
+            setParseStatus("Parsed content filled the manual fields. Review it, then save the draft.");
+          } else {
+            setParseStatus("Uploaded and parsed, but no structured resume content was returned.");
+          }
+        } catch (parseError) {
+          setParseStatus(getApiErrorMessage(parseError, "Uploaded, but parsing failed right now."));
+        } finally {
+          setIsParsing(false);
+        }
+      }
     } catch (error) {
       setUploadStatus(getApiErrorMessage(error, "Upload failed right now."));
     } finally {
@@ -401,6 +650,7 @@ const ResumeEditorPage = () => {
         : `Build out the essentials (${completedSections}/${completionSteps.length})`;
 
   const updateContentField = (field, value) => {
+    setValidationErrors((current) => ({ ...current, [field]: "", body: "" }));
     setPayload((current) => ({
       ...current,
       content_json: { ...current.content_json, [field]: value },
@@ -408,6 +658,7 @@ const ResumeEditorPage = () => {
   };
 
   const updateContactField = (field, value) => {
+    setValidationErrors((current) => ({ ...current, [field]: "" }));
     setPayload((current) => ({
       ...current,
       content_json: {
@@ -421,6 +672,12 @@ const ResumeEditorPage = () => {
   };
 
   const updateCollectionItem = (field, index, key, value) => {
+    setValidationErrors((current) => ({
+      ...current,
+      body: "",
+      experienceDates: field === "experience" ? "" : current.experienceDates,
+      educationDates: field === "education" ? "" : current.educationDates,
+    }));
     setPayload((current) => ({
       ...current,
       content_json: {
@@ -433,6 +690,7 @@ const ResumeEditorPage = () => {
   };
 
   const addCollectionItem = (field, factory) => {
+    setValidationErrors((current) => ({ ...current, body: "" }));
     setPayload((current) => ({
       ...current,
       content_json: {
@@ -496,43 +754,25 @@ const ResumeEditorPage = () => {
 
   return (
     <div className="space-y-6">
-      <PageIntro
-        badge={payload.source_type === "upload" ? "Upload attached" : "Manual entry"}
-        description="The MVP now supports source resume upload as well as the existing manual builder. Upload stores the source file, while the manual form keeps the editable profile data clean and reviewable."
-        eyebrow="Resume editor"
-        title="Capture resume data with upload or guided manual entry."
-      />
-
-      <Panel>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <PageTitleBar title="Resume Editor" />
+      {loadStatus ? (
+        <p className={`rounded-2xl px-4 py-3 text-sm font-medium ${isLoadingDraft ? "bg-slate-100 text-slate-600" : "bg-teal-50 text-teal-800"}`}>
+          {loadStatus}
+        </p>
+      ) : null}
+      <Panel className="p-3 sm:p-3.5">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Upload</p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Attach an existing resume file</h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-500">
-              MVP upload stores the source resume file for later parsing and review. Manual entry remains available below for direct editing.
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">Upload</p>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">PDF, DOC, DOCX, TXT</span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Select or drop one resume file, then upload it for parsing.</p>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">PDF, DOC, DOCX, TXT</span>
-        </div>
 
-        <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_auto]">
-          <div className="rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50/80 p-5">
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Source resume file</label>
-            <input
-              accept={UPLOAD_ACCEPT}
-              className="rb-field file:mr-4 file:rounded-xl file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
-              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-              type="file"
-            />
-            <p className="mt-2 text-sm text-slate-500">
-              {uploadedFileName
-                ? `Latest uploaded file: ${uploadedFileName}`
-                : "Choose one source file if you want to keep the original resume on record before manual edits."}
-            </p>
-          </div>
           <button
-            className="rb-btn-primary h-fit w-full justify-center lg:w-auto lg:min-w-48"
-            disabled={isUploading}
+            className="rb-btn-primary w-full justify-center px-4 py-2.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70 lg:w-auto lg:min-w-36"
+            disabled={isLoadingDraft || isUploading || !selectedFile}
             onClick={handleUpload}
             type="button"
           >
@@ -540,86 +780,82 @@ const ResumeEditorPage = () => {
           </button>
         </div>
 
-        {uploadStatus ? <p className="mt-4 text-sm font-medium text-slate-500">{uploadStatus}</p> : null}
+        <label
+          className={`mt-3 flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-[1.2rem] border border-dashed px-3 py-2 text-left transition duration-200 ${
+            isDraggingUpload
+              ? "border-teal-400 bg-teal-50 shadow-[0_18px_45px_rgba(20,184,166,0.14)]"
+              : "border-slate-300 bg-slate-50/80 hover:border-teal-300 hover:bg-teal-50/60"
+          }`}
+          htmlFor={uploadInputId}
+          onDragLeave={handleUploadDragLeave}
+          onDragOver={handleUploadDragOver}
+          onDrop={handleUploadDrop}
+        >
+          <input
+            accept={UPLOAD_ACCEPT}
+            className="sr-only"
+            id={uploadInputId}
+            onChange={handleFileInputChange}
+            ref={fileInputRef}
+            type="file"
+          />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-slate-900">
+              {selectedFile ? selectedFile.name : "Drag and drop your resume file"}
+            </span>
+            <span className="mt-0.5 block truncate text-xs leading-5 text-slate-500">
+              {selectedFile ? `${formatFileSize(selectedFile.size)} selected` : "or choose a file from your computer"}
+            </span>
+          </span>
+          <span className="shrink-0 rounded-xl bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-slate-200">
+            Select file
+          </span>
+        </label>
+
+        <div className="mt-2 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-slate-500">
+            {uploadedFileName ? `Latest uploaded file: ${uploadedFileName}` : "No source file uploaded yet."}
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {uploadStatus ? <p className="text-sm font-medium text-slate-600">{uploadStatus}</p> : null}
+            {isParsing || parseStatus ? <p className="text-sm font-medium text-slate-600">{parseStatus}</p> : null}
+          </div>
+        </div>
       </Panel>
 
       <section className="space-y-6">
-        <div className="rounded-[2rem] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(240,253,250,0.8))] p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="rounded-[1.7rem] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(240,253,250,0.8))] p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Build progress</p>
-                  <p className="mt-2 text-lg font-semibold tracking-tight text-slate-900">{progressLabel}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">Build progress</p>
+                  <p className="mt-1 text-base font-semibold tracking-tight text-slate-900">{progressLabel}</p>
                 </div>
-                <p className="text-2xl font-semibold tracking-tight text-slate-900">{completionPercent}%</p>
+                <p className="text-xl font-semibold tracking-tight text-slate-900">{completionPercent}%</p>
               </div>
-              <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-200">
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
                 <div
                   className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0f766e_55%,#14b8a6_100%)] transition-all duration-300"
                   style={{ width: `${completionPercent}%` }}
                 />
               </div>
             </div>
-          </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
-            <ResumeStatusCard
-              icon={
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5Z" />
-                  <path d="M4 20a8 8 0 0 1 16 0" />
-                </svg>
-              }
-              isReady={hasProfile}
-              label="Profile"
-              note={hasProfile ? "Name and headline are set." : "Add your name and headline."}
-              tone="soft"
-              value={hasProfile ? "Identity is in place" : "Needs core details"}
-            />
-            <ResumeStatusCard
-              icon={
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M4 7h16" />
-                  <path d="M4 12h10" />
-                  <path d="M4 17h8" />
-                </svg>
-              }
-              isReady={hasSkills}
-              label="Skills"
-              note={hasSkills ? "Keywords will carry into the preview." : "Add the skills recruiters should scan for."}
-              tone="success"
-              value={hasSkills ? `${previewSkills.length} skills added` : "No skills yet"}
-            />
-            <ResumeStatusCard
-              icon={
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M8 6h8" />
-                  <path d="M6 10h12" />
-                  <path d="M7 18h10" />
-                  <path d="M9 2h6v4H9z" />
-                </svg>
-              }
-              isReady={hasExperience}
-              label="Work history"
-              note={hasExperience ? "Roles are shaping the document." : "Add at least one role with bullets."}
-              tone="default"
-              value={hasExperience ? `${experienceCount} role${experienceCount === 1 ? "" : "s"} drafted` : "No roles yet"}
-            />
-            <ResumeStatusCard
-              icon={
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M4 6 12 2l8 4-8 4-8-4Z" />
-                  <path d="m4 10 8 4 8-4" />
-                  <path d="m4 14 8 4 8-4" />
-                </svg>
-              }
-              isReady={hasEducation}
-              label="Education"
-              note={hasEducation ? "Academic details are in place." : "Add school, degree, and dates."}
-              tone="warm"
-              value={hasEducation ? `${educationCount} education entr${educationCount === 1 ? "y" : "ies"}` : "No entries yet"}
-            />
+            <div className="flex flex-wrap gap-2 xl:justify-end">
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasProfile ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
+                Profile
+              </span>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasSkills ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
+                Skills
+              </span>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasExperience ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
+                Work history
+              </span>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasEducation ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
+                Education
+              </span>
+            </div>
           </div>
         </div>
 
@@ -645,9 +881,13 @@ const ResumeEditorPage = () => {
                       <input
                         className="rb-field"
                         placeholder="Senior Product Resume"
-                        onChange={(e) => setPayload((current) => ({ ...current, title: e.target.value }))}
+                        onChange={(e) => {
+                          setValidationErrors((current) => ({ ...current, title: "" }));
+                          setPayload((current) => ({ ...current, title: e.target.value }));
+                        }}
                         value={payload.title}
                       />
+                      {validationErrors.title ? <FieldHint message={validationErrors.title} tone="error" /> : null}
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700">Full name</label>
@@ -657,6 +897,7 @@ const ResumeEditorPage = () => {
                         onChange={(e) => updateContentField("name", e.target.value)}
                         value={payload.content_json.name}
                       />
+                      {validationErrors.name ? <FieldHint message={validationErrors.name} tone="error" /> : null}
                     </div>
                   </div>
 
@@ -665,9 +906,9 @@ const ResumeEditorPage = () => {
                     <input
                       className="rb-field"
                       placeholder="Product Manager focused on B2B workflow tools"
-                      onChange={(e) => updateContentField("headline", e.target.value)}
-                      value={payload.content_json.headline}
-                    />
+                    onChange={(e) => updateContentField("headline", e.target.value)}
+                    value={payload.content_json.headline}
+                  />
                   </div>
                 </>
               ) : (
@@ -695,7 +936,11 @@ const ResumeEditorPage = () => {
                         placeholder="name@email.com"
                         value={payload.content_json.contact_details.email}
                       />
-                      {contactWarnings.email ? <FieldHint message="Use a standard email format like name@example.com." tone="warning" /> : null}
+                      {validationErrors.email ? (
+                        <FieldHint message={validationErrors.email} tone="error" />
+                      ) : contactWarnings.email ? (
+                        <FieldHint message="Use a standard email format like name@example.com." tone="warning" />
+                      ) : null}
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-slate-700">Phone</label>
@@ -723,7 +968,11 @@ const ResumeEditorPage = () => {
                         placeholder="portfolio.com"
                         value={payload.content_json.contact_details.website}
                       />
-                      {contactWarnings.website ? <FieldHint message="A portfolio link works best with a domain or full URL." tone="warning" /> : null}
+                      {validationErrors.website ? (
+                        <FieldHint message={validationErrors.website} tone="error" />
+                      ) : contactWarnings.website ? (
+                        <FieldHint message="A portfolio link works best with a domain or full URL." tone="warning" />
+                      ) : null}
                     </div>
                   </div>
 
@@ -733,9 +982,13 @@ const ResumeEditorPage = () => {
                       className="rb-field"
                       onChange={(e) => updateContactField("linkedin", e.target.value)}
                       placeholder="linkedin.com/in/your-name"
-                      value={payload.content_json.contact_details.linkedin}
-                    />
-                    {contactWarnings.linkedin ? <FieldHint message="Use your public LinkedIn URL or profile path." tone="warning" /> : null}
+                    value={payload.content_json.contact_details.linkedin}
+                  />
+                    {validationErrors.linkedin ? (
+                      <FieldHint message={validationErrors.linkedin} tone="error" />
+                    ) : contactWarnings.linkedin ? (
+                      <FieldHint message="Use your public LinkedIn URL or profile path." tone="warning" />
+                    ) : null}
                   </div>
                 </>
               ) : (
@@ -765,6 +1018,7 @@ const ResumeEditorPage = () => {
               ) : (
                 <p className="mt-5 text-sm leading-7 text-slate-500">A strong summary quickly frames who you are and what kind of role this resume is for.</p>
               )}
+              {sectionVisibility.summary && validationErrors.body ? <FieldHint message={validationErrors.body} tone="error" /> : null}
             </section>
 
             <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
@@ -785,6 +1039,7 @@ const ResumeEditorPage = () => {
                     value={payload.content_json.skills.join("\n")}
                   />
                   <p className="mt-2 text-sm text-slate-500">Use one skill per line, or separate items with commas. They will appear as grouped keywords in the preview.</p>
+                  {validationErrors.body ? <FieldHint message={validationErrors.body} tone="error" /> : null}
                 </>
               ) : (
                 <p className="mt-5 text-sm leading-7 text-slate-500">This section works best as a clean list of tools, platforms, and strengths recruiters can scan quickly.</p>
@@ -882,6 +1137,8 @@ const ResumeEditorPage = () => {
                       </div>
                       {!isMonthYearLike(item.startDate) ? <FieldHint message="Use Jan 2024, 01/2024, or just 2024." tone="warning" /> : null}
                       {!item.isCurrent && !isMonthYearLike(item.endDate) ? <FieldHint message="End date works best as Jan 2025, 01/2025, or 2025." tone="warning" /> : null}
+                      {index === 0 && validationErrors.experienceDates ? <FieldHint message={validationErrors.experienceDates} tone="error" /> : null}
+                      {index === 0 && validationErrors.body ? <FieldHint message={validationErrors.body} tone="error" /> : null}
 
                       <textarea
                         className="rb-field mt-4 min-h-36"
@@ -970,6 +1227,8 @@ const ResumeEditorPage = () => {
                       </div>
                       {!isMonthYearLike(item.startDate) ? <FieldHint message="Use Jan 2021, 01/2021, or 2021 for education dates." tone="warning" /> : null}
                       {!isMonthYearLike(item.endDate) ? <FieldHint message="Keep the end date in the same month/year style for consistency." tone="warning" /> : null}
+                      {index === 0 && validationErrors.educationDates ? <FieldHint message={validationErrors.educationDates} tone="error" /> : null}
+                      {index === 0 && validationErrors.body ? <FieldHint message={validationErrors.body} tone="error" /> : null}
                     </div>
                   ))}
                 </div>
@@ -991,7 +1250,7 @@ const ResumeEditorPage = () => {
                 </div>
                 <button
                   className="rb-btn-primary w-full justify-center sm:w-auto sm:min-w-52"
-                  disabled={isSaving}
+                  disabled={isLoadingDraft || isSaving}
                   onClick={saveResume}
                   type="button"
                 >
