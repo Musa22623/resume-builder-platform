@@ -43,7 +43,6 @@ class UserSerializer(serializers.ModelSerializer):
             "profile",
         )
 
-
 class SignUpSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
@@ -81,6 +80,8 @@ class SignUpSerializer(serializers.Serializer):
         profile.country = country
         profile.timezone = timezone_value
         profile.save()
+
+        TrialStatus.objects.get_or_create(user=user)
 
         return user
 

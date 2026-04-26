@@ -1,9 +1,13 @@
 import base64
 import io
 import os
+from datetime import timedelta
 
 import qrcode
 import stripe
+from django.utils import timezone
+
+from billing.models import TrialStatus, UserSubscription
 
 
 def create_stripe_checkout_session(user_email: str, plan_type: str) -> str:
@@ -54,3 +58,55 @@ def build_crypto_payment_info() -> list[dict]:
             }
         )
     return result
+
+
+def get_user_access_status(user) -> dict:
+    now = timezone.now()
+
+    active_subscription = (
+        UserSubscription.objects.filter(user=user, is_active=True)
+        .order_by("-started_at")
+        .select_related("plan")
+        .first()
+    )
+    trial = TrialStatus.objects.filter(user=user).first()
+
+    trial_is_active = False
+    trial_remaining_days = 0
+    trial_ends_at = None
+    if trial:
+        trial_ends_at = trial.started_at + timedelta(days=trial.trial_days)
+        trial_remaining_days = max(0, (trial_ends_at - now).days)
+        trial_is_active = trial_ends_at > now
+
+    subscription_is_active = False
+    subscription_ends_at = None
+    subscription_plan_type = None
+    if active_subscription:
+        subscription_ends_at = active_subscription.ends_at
+        subscription_plan_type = active_subscription.plan.plan_type
+        subscription_is_active = active_subscription.ends_at is None or active_subscription.ends_at > now
+
+    has_access = subscription_is_active or trial_is_active
+    access_type = "subscription" if subscription_is_active else "trial" if trial_is_active else "none"
+
+    return {
+        "has_access": has_access,
+        "access_type": access_type,
+        "trial": {
+            "is_active": trial_is_active,
+            "remaining_days": trial_remaining_days,
+            "started_at": trial.started_at if trial else None,
+            "ends_at": trial_ends_at,
+        },
+        "subscription": {
+            "is_active": subscription_is_active,
+            "plan_type": subscription_plan_type,
+            "ends_at": subscription_ends_at,
+        },
+        "features": {
+            "resume_edit": has_access,
+            "ai_optimize": has_access,
+            "export": has_access,
+        },
+    }

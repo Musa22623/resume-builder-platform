@@ -27,3 +27,11 @@ class TrialStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = TrialStatus
         fields = ("user", "started_at", "trial_days", "remaining_days")
+
+
+class AccessStatusSerializer(serializers.Serializer):
+    has_access = serializers.BooleanField()
+    access_type = serializers.ChoiceField(choices=("trial", "subscription", "none"))
+    trial = serializers.DictField()
+    subscription = serializers.DictField()
+    features = serializers.DictField()

@@ -4,6 +4,7 @@ from django.db import models
 
 class JobDescription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    job_title = models.CharField(max_length=255)
     source_type = models.CharField(max_length=20, choices=[("link", "Link"), ("manual", "Manual")])
     job_link = models.URLField(blank=True)
     raw_text = models.TextField()

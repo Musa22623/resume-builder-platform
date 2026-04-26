@@ -22,9 +22,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# from .serializers import SignUpSerializer, UserSerializer
-
-
 User = get_user_model()
 
 
