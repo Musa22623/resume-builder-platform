@@ -2,7 +2,7 @@ export const getApiErrorMessage = (error, fallbackMessage) => {
   const responseData = error?.response?.data;
 
   if (!responseData) {
-    return "We couldn't reach the backend. Check the API URL and make sure the backend server is running.";
+    return "We couldn't complete your request right now. Please try again in a moment.";
   }
 
   if (typeof responseData.message === "string") {

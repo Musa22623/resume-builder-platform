@@ -8,6 +8,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
   const login = async (email, password) => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     const { data } = await api.post("/api/v1/auth/login/", { email, password });
     localStorage.removeItem(DEV_LOGIN_STORAGE_KEY);
     localStorage.setItem("access_token", data.access_token);

@@ -56,8 +56,7 @@ const SignupPage = () => {
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Start free</p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900">Create your account and move straight into the workspace.</h1>
           <p className="mt-4 text-sm leading-7 text-slate-500">
-            The MVP flow is simple on purpose: sign up, arrive in the dashboard, then continue with resume entry, job targeting, and billing only
-            when you need it.
+            Sign up, arrive in your dashboard, and continue with resume editing, job targeting, and billing only when you need it.
           </p>
 
           <div className="mt-8 space-y-3">

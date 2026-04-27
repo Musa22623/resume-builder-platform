@@ -3,31 +3,33 @@ import { getUserDisplayName, getUserInitials, getUserSecondaryText } from "../..
 
 const navLinkClass = (isActive, isCollapsed) =>
   [
-    "relative flex items-center overflow-visible rounded-2xl border px-4 py-3 transition duration-200",
+    "relative flex items-center overflow-visible rounded-lg border px-3 py-2.5 transition duration-200",
     isCollapsed ? "justify-center px-3" : "justify-between",
     isActive
-      ? "border-teal-600 bg-teal-600 text-white shadow-[0_18px_40px_rgba(13,148,136,0.22)]"
-      : "border-transparent bg-white/70 text-slate-700 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800",
+      ? "border-slate-900 bg-slate-900 text-white shadow-[0_12px_24px_rgba(15,23,42,0.16)]"
+      : "border-transparent bg-transparent text-slate-700 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800",
   ].join(" ");
 
 const iconClass = (isActive) =>
   [
-    "inline-flex h-9 w-9 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.12em] transition duration-200",
-    isActive ? "bg-white/18 text-white" : "bg-slate-900 text-white group-hover:bg-teal-600",
+    "inline-flex h-8 w-8 items-center justify-center rounded-md text-[10px] font-bold uppercase tracking-[0.08em] transition duration-200",
+    isActive ? "bg-white/15 text-white" : "bg-slate-100 text-slate-700 group-hover:bg-teal-100 group-hover:text-teal-800",
   ].join(" ");
 
 export const SidebarLinks = ({ isCollapsed, navItems }) => {
   return (
     <>
       {navItems.map((item) => (
-        <NavLink end key={item.to} to={item.to}>
+        <NavLink aria-label={item.label} end key={item.to} title={item.description || item.label} to={item.to}>
           {({ isActive }) => (
             <div className={`group ${navLinkClass(isActive, isCollapsed)}`}>
               <span className={`flex min-w-0 items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
-                <span className={iconClass(isActive)}>{item.icon}</span>
+                <span className={iconClass(isActive)} aria-hidden="true">
+                  {item.icon}
+                </span>
                 {!isCollapsed ? (
                   <span className="min-w-0">
-                    <span className="block text-[15px] font-semibold">{item.label}</span>
+                    <span className="block text-sm font-semibold">{item.label}</span>
                     {item.description ? (
                       <span className={`mt-0.5 block text-xs ${isActive ? "text-white/80" : "text-slate-500 group-hover:text-teal-700"}`}>
                         {item.description}
@@ -38,7 +40,7 @@ export const SidebarLinks = ({ isCollapsed, navItems }) => {
               </span>
 
               {isCollapsed ? (
-                <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-3 hidden w-max min-w-48 -translate-y-1/2 translate-x-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-left text-white opacity-0 shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition duration-200 group-hover:translate-x-0 group-hover:opacity-100 lg:block">
+                <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-3 hidden w-max min-w-48 -translate-y-1/2 translate-x-2 rounded-lg border border-slate-200 bg-slate-950 px-4 py-3 text-left text-white opacity-0 shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition duration-200 group-hover:translate-x-0 group-hover:opacity-100 lg:block">
                   <span className="block text-sm font-semibold">{item.label}</span>
                   {item.description ? <span className="mt-1 block text-xs leading-6 text-slate-300">{item.description}</span> : null}
                 </span>
@@ -60,32 +62,32 @@ const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) =>
   return (
     <aside
       className={[
-        "relative rounded-[2rem] border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:flex-shrink-0",
-        isCollapsed ? "lg:w-[5.75rem]" : "lg:w-72",
+        "relative rounded-xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] lg:sticky lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:flex-shrink-0",
+        isCollapsed ? "lg:w-[5.25rem]" : "lg:w-72",
       ].join(" ")}
     >
-      <div className={`mb-6 flex ${isCollapsed ? "justify-center" : "items-start justify-between gap-3"}`}>
+      <div className={`mb-4 flex ${isCollapsed ? "justify-center" : "items-start justify-between gap-3"}`}>
         {!isCollapsed ? (
           <>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Resume Builder</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{adminLabel}</h1>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">Resume Builder</p>
+              <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-950">{adminLabel}</h1>
             </div>
-            <div className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">Live</div>
+            <div className="rounded-md bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">Live</div>
           </>
         ) : null}
 
         {/* Keep the collapse toggle obvious so editing pages can reclaim space quickly. */}
         <button
-          className={`inline-flex items-center justify-center rounded-2xl border border-slate-200/90 bg-white/90 text-sm font-semibold text-slate-700 shadow-[0_10px_25px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800 ${
-            isCollapsed ? "h-11 w-11" : "h-11 gap-2 px-3 lg:absolute lg:right-4 lg:top-4"
+          className={`inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm transition duration-200 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800 ${
+            isCollapsed ? "h-10 w-10" : "h-10 gap-2 px-3 lg:absolute lg:right-3 lg:top-3"
           }`}
           onClick={onToggleCollapse}
           title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           type="button"
         >
           {!isCollapsed ? <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Space</span> : null}
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-900 text-white">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-white">
             <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
               <path
                 d={isCollapsed ? "M6 3.5L10.5 8L6 12.5" : "M10 3.5L5.5 8L10 12.5"}
@@ -104,15 +106,15 @@ const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) =>
       </nav>
 
       {!isCollapsed ? (
-        <div className="mt-6 rounded-3xl bg-slate-900 p-4 text-white">
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-300">Signed in as</p>
-          <p className="mt-2 text-lg font-semibold">{displayName}</p>
+        <div className="mt-5 rounded-lg bg-slate-900 p-4 text-white">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Signed in as</p>
+          <p className="mt-2 text-base font-semibold">{displayName}</p>
           {secondaryText ? <p className="mt-1 text-sm text-slate-300">{secondaryText}</p> : null}
         </div>
       ) : (
-        <div className="mt-6 flex justify-center">
+        <div className="mt-5 flex justify-center">
           <div
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-semibold text-white"
             title={displayName}
           >
             {initials}
@@ -121,7 +123,7 @@ const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) =>
       )}
 
       <button
-        className={`rb-btn-secondary mt-6 ${isCollapsed ? "w-full px-0" : "w-full"}`}
+        className={`rb-btn-secondary mt-5 ${isCollapsed ? "w-full px-0" : "w-full"}`}
         onClick={onLogout}
         title={isCollapsed ? "Logout" : undefined}
         type="button"

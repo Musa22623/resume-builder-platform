@@ -2,15 +2,41 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../services/api/client";
 import { getUserDisplayName, getUserSecondaryText } from "../lib/userDisplay";
 
+const RECENT_SEARCHES_KEY = "supportInboxRecentSearches";
+
 const formatTimestamp = (value) => {
   if (!value) return "Time unavailable";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time unavailable";
 
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
+};
+
+const formatRelativeTime = (value) => {
+  if (!value) return "unknown";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown";
+
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (diffSeconds < 60) return "just now";
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return formatTimestamp(value);
 };
 
 const getStatusBadgeClassName = (isResolved) =>
@@ -23,7 +49,43 @@ const feedbackToneClassNames = {
   error: "border-rose-200 bg-rose-50 text-rose-800",
 };
 
+const priorityClassNames = {
+  urgent: "border-rose-200 bg-rose-50 text-rose-700",
+  payment: "border-violet-200 bg-violet-50 text-violet-700",
+  general: "border-slate-200 bg-slate-50 text-slate-600",
+};
+
 const getMessageMeta = (message) => getUserSecondaryText(message) || `Ticket #${message.id}`;
+
+const getUserEmail = (message) =>
+  message?.email || message?.user_email || message?.user?.email || getUserSecondaryText(message) || "";
+
+const getLastActivityAt = (message) => message?.updated_at || message?.created_at;
+
+const getHasUnreadSignal = (message) => !message.is_resolved && !message.admin_reply;
+
+const getPriority = (message) => {
+  const haystack = [message?.message, message?.admin_reply, message?.email, message?.username]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/\b(urgent|asap|immediately|blocked|can't login|cannot login|error|failed|expired token)\b/.test(haystack)) {
+    return { id: "urgent", label: "Urgent" };
+  }
+
+  if (/\b(payment|billing|stripe|crypto|invoice|refund|charge|subscription|usdt)\b/.test(haystack)) {
+    return { id: "payment", label: "Payment issue" };
+  }
+
+  return { id: "general", label: "General question" };
+};
+
+const getFilterCount = (messages, filterId) => {
+  if (filterId === "open") return messages.filter((message) => !message.is_resolved).length;
+  if (filterId === "resolved") return messages.filter((message) => message.is_resolved).length;
+  return messages.length;
+};
 
 const filterOptions = [
   { id: "all", label: "All" },
@@ -37,27 +99,48 @@ const AdminChatPage = () => {
   const [replyText, setReplyText] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [activeFilter, setActiveFilter] = useState("open");
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
-  const loadMessages = async () => {
+  const loadMessages = async ({ silent = false } = {}) => {
     try {
+      if (!silent) setIsLoading(true);
       const { data } = await api.get("/api/admin/contact-messages/");
-      setMessages(data);
-      if (!selectedId && data.length) setSelectedId(data[0].id);
+      const nextMessages = Array.isArray(data) ? data : [];
+
+      setMessages(nextMessages);
+      setLoadError("");
+      if (!selectedId && nextMessages.length) setSelectedId(nextMessages[0].id);
     } catch {
-      setFeedback({ tone: "error", message: "Failed to load chat messages." });
+      setLoadError("Failed to load messages");
+      if (!silent) setFeedback({ tone: "error", message: "Failed to load messages." });
+    } finally {
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadMessages();
-    const id = setInterval(loadMessages, 10000);
+    const id = setInterval(() => loadMessages({ silent: true }), 10000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const savedSearches = JSON.parse(window.localStorage.getItem(RECENT_SEARCHES_KEY) || "[]");
+      if (Array.isArray(savedSearches)) setRecentSearches(savedSearches.slice(0, 5));
+    } catch {
+      setRecentSearches([]);
+    }
   }, []);
 
   const openCount = useMemo(() => messages.filter((message) => !message.is_resolved).length, [messages]);
   const resolvedCount = useMemo(() => messages.filter((message) => message.is_resolved).length, [messages]);
+  const unreadCount = useMemo(() => messages.filter(getHasUnreadSignal).length, [messages]);
+
   const filteredMessages = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -69,7 +152,8 @@ const AdminChatPage = () => {
 
       const haystack = [
         getUserDisplayName(message),
-        message.email,
+        getUserEmail(message),
+        message.username,
         message.message,
         message.admin_reply,
       ]
@@ -80,7 +164,11 @@ const AdminChatPage = () => {
       return haystack.includes(normalizedQuery);
     });
   }, [activeFilter, messages, searchQuery]);
-  const selected = useMemo(() => filteredMessages.find((m) => m.id === selectedId) || null, [filteredMessages, selectedId]);
+
+  const selected = useMemo(
+    () => filteredMessages.find((message) => message.id === selectedId) || null,
+    [filteredMessages, selectedId],
+  );
 
   useEffect(() => {
     if (!filteredMessages.length) {
@@ -98,6 +186,17 @@ const AdminChatPage = () => {
     setReplyText("");
   }, [selectedId]);
 
+  const commitRecentSearch = (value) => {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) return;
+
+    setRecentSearches((current) => {
+      const next = [trimmedValue, ...current.filter((item) => item.toLowerCase() !== trimmedValue.toLowerCase())].slice(0, 5);
+      window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   const sendReply = async ({ resolve = false } = {}) => {
     if (!selected || !replyText.trim()) return;
 
@@ -110,9 +209,9 @@ const AdminChatPage = () => {
       setReplyText("");
       setFeedback({
         tone: "success",
-        message: resolve ? "Reply sent and marked resolved." : "Reply sent.",
+        message: resolve ? "Reply sent and ticket resolved." : "Reply sent.",
       });
-      await loadMessages();
+      await loadMessages({ silent: true });
     } catch {
       setFeedback({ tone: "error", message: "Failed to send reply." });
     } finally {
@@ -120,57 +219,88 @@ const AdminChatPage = () => {
     }
   };
 
-  const updateResolution = async (isResolved) => {
-    if (!selected) return;
+  const updateMessageResolution = async (message, isResolved) => {
+    if (!message) return;
 
     try {
       setIsSubmitting(true);
-      await api.patch(`/api/admin/contact-messages/${selected.id}/`, {
+      await api.patch(`/api/admin/contact-messages/${message.id}/`, {
         is_resolved: isResolved,
       });
       setFeedback({
         tone: "success",
-        message: isResolved ? "Conversation marked resolved." : "Conversation reopened.",
+        message: isResolved ? "Marked as resolved." : "Ticket reopened.",
       });
-      await loadMessages();
+      await loadMessages({ silent: true });
     } catch {
-      setFeedback({ tone: "error", message: "Failed to update conversation status." });
+      setFeedback({ tone: "error", message: "Failed to update ticket status." });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const retryLoadMessages = () => {
+    setFeedback(null);
+    loadMessages();
+  };
+
+  const emptyTitle = activeFilter === "open" ? "No open tickets 🎉" : "You're all caught up";
+  const emptyDescription =
+    activeFilter === "resolved"
+      ? "Resolved tickets will appear here after your team closes them."
+      : "New customer messages will appear here as soon as they arrive.";
+
+  const selectedPriority = selected ? getPriority(selected) : null;
+  const selectedEmail = selected ? getUserEmail(selected) : "";
+
   return (
     <div className="space-y-4">
-      <section className="rounded-[1.5rem] border border-white/80 bg-white/88 px-4 py-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:px-5 sm:py-4">
+      <section className="rounded-2xl border border-white/80 bg-white/92 px-4 py-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:px-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">Admin chat</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">Support operations</p>
+              {unreadCount ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_0_4px_rgba(244,63,94,0.12)]" />
+                  {unreadCount} unread
+                </span>
+              ) : null}
+            </div>
             <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900 sm:text-[1.55rem]">Support Inbox</h1>
             <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
-              Review incoming support requests, send a reply, and close the item once the issue is handled.
+              Triage, reply, and resolve customer messages from one focused workspace.
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:min-w-[300px]">
-            <div className="rounded-[1.15rem] border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Total</p>
-              <p className="mt-1.5 text-lg font-semibold tracking-tight text-slate-900">{messages.length}</p>
-            </div>
-            <div className="rounded-[1.15rem] border border-amber-200 bg-amber-50 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">Open</p>
-              <p className="mt-1.5 text-lg font-semibold tracking-tight text-amber-900">{openCount}</p>
-            </div>
-            <div className="rounded-[1.15rem] border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Resolved</p>
-              <p className="mt-1.5 text-lg font-semibold tracking-tight text-emerald-900">{resolvedCount}</p>
-            </div>
+          <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
+            {[
+              { id: "all", label: "Total", value: messages.length, className: "border-slate-200 bg-slate-50 text-slate-900" },
+              { id: "open", label: "Open", value: openCount, className: "border-amber-200 bg-amber-50 text-amber-900" },
+              { id: "resolved", label: "Resolved", value: resolvedCount, className: "border-emerald-200 bg-emerald-50 text-emerald-900" },
+            ].map((stat) => {
+              const isActive = activeFilter === stat.id;
+
+              return (
+                <button
+                  className={`rounded-xl border px-3 py-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                    stat.className
+                  } ${isActive ? "ring-2 ring-teal-300" : ""}`}
+                  key={stat.id}
+                  onClick={() => setActiveFilter(stat.id)}
+                  type="button"
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] opacity-70">{stat.label}</span>
+                  <span className="mt-1.5 block text-2xl font-semibold tracking-tight">{stat.value}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {feedback ? (
           <div
-            className={`mt-3 rounded-[1.15rem] border px-3 py-2.5 text-sm font-medium ${
+            className={`mt-3 rounded-xl border px-3 py-2.5 text-sm font-medium ${
               feedbackToneClassNames[feedback.tone] || feedbackToneClassNames.success
             }`}
           >
@@ -179,41 +309,61 @@ const AdminChatPage = () => {
         ) : null}
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-        <aside className="rounded-[1.75rem] border border-white/80 bg-white/92 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+      <div className="grid gap-4 xl:grid-cols-[400px_1fr]">
+        <aside className="rounded-2xl border border-white/80 bg-white/95 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-1 pb-3">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Inbox</h2>
-              <p className="mt-1 text-sm text-slate-500">Latest support requests</p>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Queue</h2>
+              <p className="mt-1 text-sm text-slate-500">Open newest tickets first</p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{filteredMessages.length} shown</div>
           </div>
 
           <div className="mt-3 space-y-3">
             <input
-              className="rb-field h-11 rounded-[1.15rem] px-3 py-2.5 text-sm"
+              className="rb-field h-11 px-3 py-2.5 text-sm"
+              onBlur={(event) => commitRecentSearch(event.target.value)}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search by user or message..."
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitRecentSearch(event.currentTarget.value);
+              }}
+              placeholder="Search email or keyword..."
               type="text"
               value={searchQuery}
             />
 
+            {recentSearches.length ? (
+              <div className="flex flex-wrap gap-2">
+                {recentSearches.map((item) => (
+                  <button
+                    className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
+                    key={item}
+                    onClick={() => setSearchQuery(item)}
+                    type="button"
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap gap-2">
               {filterOptions.map((option) => {
                 const isActive = activeFilter === option.id;
+                const count = getFilterCount(messages, option.id);
 
                 return (
                   <button
                     key={option.id}
                     className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                       isActive
-                        ? "border-teal-500 bg-teal-50 text-teal-700"
+                        ? "border-teal-500 bg-teal-50 text-teal-700 shadow-[0_8px_18px_rgba(20,184,166,0.12)]"
                         : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                     onClick={() => setActiveFilter(option.id)}
                     type="button"
                   >
-                    {option.label}
+                    {option.label} {count}
                   </button>
                 );
               })}
@@ -221,73 +371,148 @@ const AdminChatPage = () => {
           </div>
 
           <div className="mt-3 space-y-2">
-            {filteredMessages.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setSelectedId(m.id)}
-                className={`block w-full rounded-[1.35rem] border px-3 py-3 text-left transition ${
-                  selectedId === m.id
-                    ? "border-teal-500 bg-teal-50 shadow-[0_12px_28px_rgba(20,184,166,0.12)]"
-                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                }`}
-                type="button"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">{getUserDisplayName(m)}</p>
-                    <p className="mt-1 truncate text-xs font-medium text-slate-400">{getMessageMeta(m)}</p>
-                    <p className="mt-1 text-xs font-medium text-slate-400">{formatTimestamp(m.updated_at || m.created_at)}</p>
-                  </div>
-                  <span
-                    className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStatusBadgeClassName(
-                      m.is_resolved,
-                    )}`}
+            {loadError ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
+                <p className="text-sm font-semibold text-rose-800">Failed to load messages</p>
+                <p className="mt-1 text-xs leading-5 text-rose-700">Refresh the inbox and try again.</p>
+                <button className="rb-btn-secondary mt-3 h-9 px-3 py-1.5 text-xs" onClick={retryLoadMessages} type="button">
+                  Retry
+                </button>
+              </div>
+            ) : null}
+
+            {isLoading && !messages.length ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                Loading support messages...
+              </div>
+            ) : null}
+
+            {!loadError &&
+              filteredMessages.map((message) => {
+                const isSelected = selectedId === message.id;
+                const priority = getPriority(message);
+                const email = getUserEmail(message);
+                const hasUnread = getHasUnreadSignal(message);
+
+                return (
+                  <article
+                    key={message.id}
+                    className={`rounded-xl border px-3 py-3 transition ${
+                      isSelected
+                        ? "border-teal-500 bg-teal-50 shadow-[0_14px_30px_rgba(20,184,166,0.16)]"
+                        : hasUnread
+                          ? "border-amber-200 bg-amber-50/55 hover:border-amber-300"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                    }`}
                   >
-                    {m.is_resolved ? "Resolved" : "Open"}
-                  </span>
-                </div>
-                <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{m.message}</p>
-              </button>
-            ))}
+                    <button className="block w-full text-left" onClick={() => setSelectedId(message.id)} type="button">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            {hasUnread ? <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" /> : null}
+                            <p className="truncate text-sm font-semibold text-slate-900">{getUserDisplayName(message)}</p>
+                          </div>
+                          <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                            {email || getMessageMeta(message)}
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-slate-400">
+                            Received {formatRelativeTime(message.created_at)} · Last {formatRelativeTime(getLastActivityAt(message))}
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                            getStatusBadgeClassName(message.is_resolved)
+                          }`}
+                        >
+                          {message.is_resolved ? "Resolved" : "Open"}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                            priorityClassNames[priority.id]
+                          }`}
+                        >
+                          {priority.label}
+                        </span>
+                        {hasUnread ? (
+                          <span className="inline-flex rounded-full border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                            New
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{message.message}</p>
+                    </button>
+
+                    <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                      <button
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-teal-300 hover:text-teal-700 disabled:pointer-events-none disabled:opacity-50"
+                        disabled={isSubmitting}
+                        onClick={() => updateMessageResolution(message, !message.is_resolved)}
+                        type="button"
+                      >
+                        {message.is_resolved ? "Reopen" : "Mark as resolved"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
           </div>
 
-          {!messages.length ? (
-            <div className="mt-3 rounded-[1.35rem] border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center">
-              <p className="text-sm font-semibold text-slate-700">No messages yet</p>
+          {!loadError && !isLoading && !messages.length ? (
+            <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center">
+              <p className="text-sm font-semibold text-slate-700">You're all caught up</p>
               <p className="mt-1 text-xs leading-5 text-slate-500">Incoming user questions will appear here.</p>
             </div>
-          ) : !filteredMessages.length ? (
-            <div className="mt-3 rounded-[1.35rem] border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center">
-              <p className="text-sm font-semibold text-slate-700">No matches found</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Try a different keyword or switch the status filter.</p>
+          ) : !loadError && !isLoading && messages.length && !filteredMessages.length ? (
+            <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center">
+              <p className="text-sm font-semibold text-slate-700">{emptyTitle}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{emptyDescription}</p>
             </div>
           ) : null}
         </aside>
 
-        <section className="rounded-[1.75rem] border border-white/80 bg-white/92 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-6">
+        <section className="rounded-2xl border border-white/80 bg-white/95 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-6">
           {!selected ? (
-            <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-5 py-10 text-center">
-              <p className="text-base font-semibold text-slate-800">Select a message</p>
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-5 py-12 text-center">
+              <p className="text-base font-semibold text-slate-800">{emptyTitle}</p>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Choose an item from the inbox to review the request and send a reply.
+                Select a ticket to read the message, reply, and close the loop.
               </p>
             </div>
           ) : (
             <div className="space-y-4">
               <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Conversation</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Conversation</p>
+                    {getHasUnreadSignal(selected) ? (
+                      <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">Unread</span>
+                    ) : null}
+                  </div>
                   <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
                     {getUserDisplayName(selected)}
                   </h3>
-                  <p className="mt-2 text-sm font-medium text-slate-500">{getMessageMeta(selected)}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-600">{selectedEmail || getMessageMeta(selected)}</p>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
-                    <span className="rounded-full bg-slate-100 px-3 py-1">Created {formatTimestamp(selected.created_at)}</span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1">Updated {formatTimestamp(selected.updated_at)}</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1">Received: {formatRelativeTime(selected.created_at)}</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                      Last reply: {selected.admin_reply ? formatRelativeTime(selected.updated_at) : "No reply yet"}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1">{formatTimestamp(selected.created_at)}</span>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      priorityClassNames[selectedPriority.id]
+                    }`}
+                  >
+                    {selectedPriority.label}
+                  </span>
                   <span
                     className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${getStatusBadgeClassName(
                       selected.is_resolved,
@@ -298,51 +523,58 @@ const AdminChatPage = () => {
                   <button
                     className="rb-btn-secondary px-3 py-2 text-xs"
                     disabled={isSubmitting}
-                    onClick={() => updateResolution(!selected.is_resolved)}
+                    onClick={() => updateMessageResolution(selected, !selected.is_resolved)}
                     type="button"
                   >
-                    {selected.is_resolved ? "Reopen" : "Mark Resolved"}
+                    {selected.is_resolved ? "Reopen" : "Mark as Resolved"}
                   </button>
                 </div>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="space-y-4">
-                  <article className="rounded-[1.4rem] border border-slate-200 bg-slate-50/70 px-4 py-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">User message</p>
-                    <p className="mt-3 text-sm leading-7 text-slate-700">{selected.message}</p>
+                  <article className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Message</p>
+                      <span className="text-xs font-semibold text-slate-400">{formatRelativeTime(selected.created_at)}</span>
+                    </div>
+                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{selected.message}</p>
                   </article>
 
-                  <article className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
+                  <article className="rounded-xl border border-slate-200 bg-white px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Admin reply</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Previous reply</p>
                       <span className="text-xs font-medium text-slate-400">
-                        {selected.admin_reply ? "Existing response" : "No response yet"}
+                        {selected.admin_reply ? "Sent" : "No response yet"}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm leading-7 text-slate-700">
-                      {selected.admin_reply || "No reply has been sent yet. Use the reply box to respond to this user."}
+                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">
+                      {selected.admin_reply || "Reply here to keep the user moving. Resolve the ticket when the issue is handled."}
                     </p>
                   </article>
                 </div>
 
-                <aside className="rounded-[1.4rem] border border-slate-200 bg-slate-50/70 px-4 py-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Reply to user</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Send a direct answer and close the ticket when the issue is handled.
+                <aside className="rounded-xl border border-teal-100 bg-teal-50/55 px-4 py-4 shadow-[0_12px_28px_rgba(20,184,166,0.08)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-teal-700">Reply panel</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Answer clearly, then mark the ticket resolved when no follow-up is needed.
                   </p>
 
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500" htmlFor="support-reply">
+                    Reply input
+                  </label>
                   <textarea
-                    className="rb-field mt-4 min-h-48 bg-white"
-                    rows={8}
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
+                    className="rb-field mt-2 min-h-52 bg-white"
+                    id="support-reply"
+                    onChange={(event) => setReplyText(event.target.value)}
                     placeholder="Write a concise admin reply..."
+                    rows={9}
+                    value={replyText}
                   />
 
                   <div className="mt-4 flex flex-col gap-2">
                     <button
-                      className="rb-btn-secondary w-full justify-center"
+                      className="rb-btn-primary h-11 w-full justify-center"
                       disabled={!replyText.trim() || isSubmitting}
                       onClick={() => sendReply({ resolve: false })}
                       type="button"
@@ -350,16 +582,30 @@ const AdminChatPage = () => {
                       {isSubmitting ? "Sending..." : "Send Reply"}
                     </button>
                     <button
-                      className="rb-btn-primary w-full justify-center"
+                      className="rb-btn-secondary h-11 w-full justify-center"
+                      disabled={isSubmitting || selected.is_resolved}
+                      onClick={() => updateMessageResolution(selected, true)}
+                      type="button"
+                    >
+                      Mark as Resolved
+                    </button>
+                    <button
+                      className="rounded-lg border border-teal-200 bg-white px-4 py-2.5 text-sm font-semibold text-teal-700 transition hover:border-teal-300 hover:bg-teal-50 disabled:pointer-events-none disabled:opacity-50"
                       disabled={!replyText.trim() || isSubmitting}
                       onClick={() => sendReply({ resolve: true })}
                       type="button"
                     >
-                      {isSubmitting ? "Sending..." : "Send Reply and Resolve"}
+                      Send Reply and Resolve
                     </button>
-                    <p className="text-xs leading-5 text-slate-400">
-                      Use a plain reply to keep the conversation open, or resolve it as part of the same action.
-                    </p>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-white/80 bg-white/75 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Quick context</p>
+                    <div className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+                      <p>Priority: {selectedPriority.label}</p>
+                      <p>Status: {selected.is_resolved ? "Resolved" : "Open"}</p>
+                      <p>Last activity: {formatRelativeTime(getLastActivityAt(selected))}</p>
+                    </div>
                   </div>
                 </aside>
               </div>

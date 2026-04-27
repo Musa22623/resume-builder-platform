@@ -6,10 +6,10 @@ const SIDEBAR_STORAGE_KEY = "resume_builder_sidebar_collapsed";
 
 const mobileNavLinkClass = ({ isActive }) =>
   [
-    "inline-flex min-w-max items-center rounded-2xl border px-4 py-3 text-sm font-semibold transition duration-200",
+    "inline-flex min-w-max items-center rounded-lg border px-3.5 py-2.5 text-sm font-semibold transition duration-200",
     isActive
-      ? "border-teal-600 bg-teal-600 text-white"
-      : "border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-800",
+      ? "border-slate-900 bg-slate-900 text-white"
+      : "border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800",
   ].join(" ");
 
 const AppLayout = ({ children, navItems, onLogout, user }) => {
@@ -28,7 +28,7 @@ const AppLayout = ({ children, navItems, onLogout, user }) => {
 
   return (
     <div className="min-h-screen bg-transparent">
-      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 py-4 lg:flex-row lg:px-6">
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-3 py-3 sm:px-4 lg:flex-row lg:px-5">
         <Sidebar
           isCollapsed={isSidebarCollapsed}
           navItems={navItems}
@@ -38,14 +38,14 @@ const AppLayout = ({ children, navItems, onLogout, user }) => {
         />
 
         <div className="min-w-0 flex-1">
-          <div className="mb-4 flex gap-2 overflow-x-auto rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.05)] backdrop-blur lg:hidden">
+          <div className="mb-4 flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-[0_8px_20px_rgba(15,23,42,0.05)] lg:hidden">
             {navItems.map((item) => (
               <NavLink key={item.to} className={mobileNavLinkClass} end to={item.to}>
                 <span>{item.label}</span>
               </NavLink>
             ))}
             <button
-              className="rb-btn-secondary whitespace-nowrap px-4 py-3"
+              className="rb-btn-secondary whitespace-nowrap px-3.5 py-2.5"
               onClick={onLogout}
               type="button"
             >
@@ -53,7 +53,7 @@ const AppLayout = ({ children, navItems, onLogout, user }) => {
             </button>
           </div>
 
-          <main className="space-y-6">{children}</main>
+          <main className="space-y-5 pb-8">{children}</main>
         </div>
       </div>
     </div>
