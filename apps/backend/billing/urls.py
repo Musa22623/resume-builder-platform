@@ -6,6 +6,7 @@ from billing.views import (
     CryptoPaymentInfoView,
     PaymentViewSet,
     StripeCheckoutSessionView,
+    StripeWebhookView,
     SubscriptionPlanViewSet,
     TrialStatusViewSet,
     UserSubscriptionViewSet,
@@ -21,5 +22,6 @@ urlpatterns = [
     path("", include(router.urls)),
     path("access-status/", AccessStatusView.as_view(), name="access_status"),
     path("stripe/checkout-session/", StripeCheckoutSessionView.as_view(), name="stripe_checkout_session"),
+    path("stripe/webhook/", StripeWebhookView.as_view(), name="stripe_webhook"),
     path("crypto/payment-info/", CryptoPaymentInfoView.as_view(), name="crypto_payment_info"),
 ]

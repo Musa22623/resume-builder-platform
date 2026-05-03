@@ -7,12 +7,14 @@ from ai_services.models import AIGenerationLog
 from ai_services.serializers import AIGenerationApplySerializer, AIOptimizeSerializer
 from ai_services.services import optimize_resume_content
 from billing.permissions import HasActiveAccess
+from common.constants.errors import AI_ERRORS
 from jobs.models import JobDescription
 from resumes.models import Resume
 from resumes.serializers import ResumeSerializer, ResumeVersionSerializer
 from resumes.models import ResumeVersion
 from common.constants.messages import AI_MESSAGES
 from common.responses import error_response, success_response
+# import openai
 
 
 class OptimizeResumeView(APIView):
@@ -59,7 +61,8 @@ class OptimizeResumeView(APIView):
             )
             return error_response(
                 error={
-                    "code": "AI_OPTIMIZATION_FAILED",
+                    "type": "system",
+                    "code": AI_ERRORS["OPTIMIZATION_FAILED"]["code"],
                     "message": str(exc),
                     "generation_id": generation.id,
                 },
@@ -98,7 +101,7 @@ class ApplyAIGenerationView(APIView):
 
         optimized_content = generation.response_payload.get("optimized_content")
         if not optimized_content:
-            raise ValidationError("No optimized content is available for this generation.")
+            raise ValidationError(AI_ERRORS["NO_OPTIMIZED_CONTENT"])
 
         created_version = None
         resume = generation.resume

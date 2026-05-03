@@ -67,4 +67,4 @@ class UnverifiedSMTPEmailBackend(EmailBackend):
                 print("Email sent successfully!")
         except Exception as e:
             print(f"Error: {e}")
-        return len(email_messages)  # 보낸 이메일의 개수를 반환
+        return len(email_messages)
