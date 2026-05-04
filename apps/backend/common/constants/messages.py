@@ -16,6 +16,10 @@ BILLING_MESSAGES = {
     "PLANS_LIST_SUCCESS": "Subscription plans retrieved successfully.",
     "CHECKOUT_SESSION_SUCCESS": "Stripe checkout session created successfully.",
     "CRYPTO_WALLETS_SUCCESS": "Crypto payment wallets retrieved successfully.",
+    "CRYPTO_PAYMENT_REQUEST_LIST_SUCCESS": "Crypto payment requests retrieved successfully.",
+    "CRYPTO_PAYMENT_REQUEST_DETAIL_SUCCESS": "Crypto payment request retrieved successfully.",
+    "CRYPTO_PAYMENT_REQUEST_CREATE_SUCCESS": "Crypto payment request created successfully.",
+    "CRYPTO_PAYMENT_REQUEST_SUBMIT_SUCCESS": "Crypto payment transaction submitted successfully.",
 }
 
 
@@ -76,4 +80,34 @@ ADMIN_MESSAGES = {
     "CONTACT_MESSAGE_DETAIL_SUCCESS": "Admin contact message retrieved successfully.",
     "CONTACT_MESSAGE_CREATE_SUCCESS": "Admin contact message created successfully.",
     "CONTACT_MESSAGE_UPDATE_SUCCESS": "Admin contact message updated successfully.",
+    "CRYPTO_NETWORKS_LIST_SUCCESS": "Admin crypto networks retrieved successfully.",
+    "CRYPTO_NETWORK_CREATE_SUCCESS": "Admin crypto network created successfully.",
+    "CRYPTO_NETWORK_UPDATE_SUCCESS": "Admin crypto network updated successfully.",
+    "CRYPTO_WALLETS_LIST_SUCCESS": "Admin crypto wallets retrieved successfully.",
+    "CRYPTO_WALLET_CREATE_SUCCESS": "Admin crypto wallet created successfully.",
+    "CRYPTO_WALLET_UPDATE_SUCCESS": "Admin crypto wallet updated successfully.",
+    "CRYPTO_PLAN_AVAILABILITY_LIST_SUCCESS": "Admin crypto plan availability retrieved successfully.",
+    "CRYPTO_PLAN_AVAILABILITY_CREATE_SUCCESS": "Admin crypto plan availability created successfully.",
+    "CRYPTO_PLAN_AVAILABILITY_UPDATE_SUCCESS": "Admin crypto plan availability updated successfully.",
+    "CRYPTO_PAYMENT_REQUESTS_LIST_SUCCESS": "Admin crypto payment requests retrieved successfully.",
+    "CRYPTO_PAYMENT_REQUEST_DETAIL_SUCCESS": "Admin crypto payment request retrieved successfully.",
+    "CRYPTO_PAYMENT_REQUEST_APPROVE_SUCCESS": "Admin crypto payment request approved successfully.",
+    "CRYPTO_PAYMENT_REQUEST_REJECT_SUCCESS": "Admin crypto payment request rejected successfully.",
+    "CRYPTO_PAYMENT_REVIEW_LOGS_SUCCESS": "Admin crypto payment review logs retrieved successfully.",
+    "SUPPORT_CONVERSATIONS_LIST_SUCCESS": "Admin support conversations retrieved successfully.",
+    "SUPPORT_CONVERSATION_DETAIL_SUCCESS": "Admin support conversation retrieved successfully.",
+    "SUPPORT_CONVERSATION_UPDATE_SUCCESS": "Admin support conversation updated successfully.",
+    "SUPPORT_MESSAGES_LIST_SUCCESS": "Admin support messages retrieved successfully.",
+    "SUPPORT_MESSAGE_CREATE_SUCCESS": "Admin support message created successfully.",
+    "SUPPORT_MARK_READ_SUCCESS": "Admin support conversation marked as read successfully.",
+}
+
+
+SUPPORT_MESSAGES = {
+    "CONVERSATIONS_LIST_SUCCESS": "Support conversations retrieved successfully.",
+    "CONVERSATION_CREATE_SUCCESS": "Support conversation created successfully.",
+    "CONVERSATION_DETAIL_SUCCESS": "Support conversation retrieved successfully.",
+    "MESSAGES_LIST_SUCCESS": "Support messages retrieved successfully.",
+    "MESSAGE_CREATE_SUCCESS": "Support message created successfully.",
+    "MARK_READ_SUCCESS": "Support conversation marked as read successfully.",
 }

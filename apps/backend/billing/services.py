@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+import uuid
 from decimal import Decimal
 from datetime import datetime
 from datetime import timedelta
@@ -10,7 +11,18 @@ import stripe
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from billing.models import Payment, SubscriptionPlan, TrialStatus, UserSubscription
+from billing.models import (
+    CryptoNetwork,
+    CryptoPaymentRequest,
+    CryptoPaymentReviewLog,
+    CryptoWallet,
+    Payment,
+    PlanCryptoAvailability,
+    SubscriptionPlan,
+    TrialStatus,
+    UserSubscription,
+)
+from platform_settings.services import log_admin_action
 
 User = get_user_model()
 
@@ -358,6 +370,266 @@ def build_crypto_payment_info() -> list[dict]:
             }
         )
     return result
+
+
+def build_wallet_qr_payload(wallet: CryptoWallet) -> str:
+    if wallet.qr_payload_override:
+        return wallet.qr_payload_override.format(address=wallet.address)
+    if wallet.network.qr_payload_template:
+        return wallet.network.qr_payload_template.format(address=wallet.address)
+    return wallet.address
+
+
+def generate_crypto_payment_reference() -> str:
+    date_part = timezone.now().strftime("%Y%m%d")
+    suffix = uuid.uuid4().hex[:6].upper()
+    return f"CR-{date_part}-{suffix}"
+
+
+def build_crypto_payment_instructions(*, plan: SubscriptionPlan, network: CryptoNetwork, wallet: CryptoWallet | None, expected_amount, expected_currency: str, reference_code: str) -> dict:
+    receiver_address = wallet.address if wallet else ""
+    token_symbol = network.token_symbol or expected_currency
+    network_name = network.network_name or network.display_name or network.code
+    return {
+        "headline": f"Send {expected_amount} {token_symbol} on {network_name}",
+        "steps": [
+            f"Send only {token_symbol} on {network_name} to the wallet address below.",
+            "After sending, submit your transaction hash for review.",
+            f"Reference {reference_code} when contacting support.",
+        ],
+        "reference_code": reference_code,
+        "receiver_address": receiver_address,
+        "token_symbol": token_symbol,
+        "network_name": network_name,
+    }
+
+
+def get_crypto_networks_for_plan(plan: SubscriptionPlan):
+    availabilities = (
+        PlanCryptoAvailability.objects.filter(plan=plan, is_enabled=True, network__is_active=True)
+        .select_related("network")
+        .order_by("network__sort_order", "network__id")
+    )
+    network_ids = [availability.network_id for availability in availabilities]
+    wallets = (
+        CryptoWallet.objects.filter(network_id__in=network_ids, is_active=True, is_public=True)
+        .select_related("network")
+        .order_by("network__sort_order", "id")
+    )
+    wallet_map: dict[int, list[CryptoWallet]] = {}
+    for wallet in wallets:
+        wallet_map.setdefault(wallet.network_id, []).append(wallet)
+    networks = [availability.network for availability in availabilities]
+    return networks, wallet_map
+
+
+def create_crypto_payment_request(*, user, plan: SubscriptionPlan, network: CryptoNetwork, wallet: CryptoWallet | None):
+    availability = PlanCryptoAvailability.objects.filter(plan=plan, network=network, is_enabled=True).first()
+    if not availability:
+        raise ValueError("Selected crypto network is not enabled for this plan.")
+
+    if not plan.active or plan.is_archived:
+        raise ValueError("Selected plan is not active.")
+
+    if wallet and wallet.network_id != network.id:
+        raise ValueError("Selected wallet does not belong to the selected crypto network.")
+
+    if wallet and (not wallet.is_active or not wallet.is_public):
+        raise ValueError("Selected wallet is not available for public payment.")
+
+    reference_code = generate_crypto_payment_reference()
+    receiver_address = wallet.address if wallet else ""
+    token_symbol = network.token_symbol or plan.currency
+    network_name = network.network_name or network.display_name or network.code
+    expires_at = timezone.now() + timedelta(hours=24)
+    instruction_snapshot = build_crypto_payment_instructions(
+        plan=plan,
+        network=network,
+        wallet=wallet,
+        expected_amount=plan.price_usd,
+        expected_currency=plan.currency,
+        reference_code=reference_code,
+    )
+
+    return CryptoPaymentRequest.objects.create(
+        user=user,
+        plan=plan,
+        network=network,
+        wallet=wallet,
+        reference_code=reference_code,
+        expected_amount=plan.price_usd,
+        expected_currency=plan.currency,
+        token_symbol=token_symbol,
+        network_name=network_name,
+        receiver_address=receiver_address,
+        instruction_snapshot=instruction_snapshot,
+        expires_at=expires_at,
+    )
+
+
+def submit_crypto_payment_request(*, payment_request: CryptoPaymentRequest, transaction_hash: str, sender_address: str = ""):
+    if payment_request.status != "pending_submission":
+        raise ValueError("This crypto payment request can no longer accept transaction submission.")
+    if payment_request.expires_at and payment_request.expires_at <= timezone.now():
+        payment_request.status = "expired"
+        payment_request.save(update_fields=["status", "updated_at"])
+        raise ValueError("This crypto payment request has expired.")
+
+    before_payload = {
+        "status": payment_request.status,
+        "transaction_hash": payment_request.transaction_hash,
+        "sender_address": payment_request.sender_address,
+    }
+    payment_request.transaction_hash = transaction_hash
+    payment_request.sender_address = sender_address
+    payment_request.status = "pending_review"
+    payment_request.submitted_at = timezone.now()
+    payment_request.save(update_fields=["transaction_hash", "sender_address", "status", "submitted_at", "updated_at"])
+
+    CryptoPaymentReviewLog.objects.create(
+        payment_request=payment_request,
+        actor=payment_request.user,
+        action="submitted",
+        before_payload=before_payload,
+        after_payload={
+            "status": payment_request.status,
+            "transaction_hash": payment_request.transaction_hash,
+            "sender_address": payment_request.sender_address,
+        },
+    )
+    return payment_request
+
+
+def _activate_subscription_for_payment(*, user, plan: SubscriptionPlan):
+    if plan.plan_type not in {"monthly", "yearly"}:
+        return None
+
+    status_value = "active"
+    if plan.plan_type == "monthly":
+        ends_at = timezone.now() + timedelta(days=30)
+    else:
+        ends_at = timezone.now() + timedelta(days=365)
+
+    subscription, _ = UserSubscription.objects.update_or_create(
+        user=user,
+        plan=plan,
+        defaults={
+            "is_active": True,
+            "status": status_value,
+            "current_period_start": timezone.now(),
+            "current_period_end": ends_at,
+            "ends_at": ends_at,
+        },
+    )
+    return subscription
+
+
+def approve_crypto_payment_request(*, payment_request: CryptoPaymentRequest, admin_user, note: str = ""):
+    if payment_request.status != "pending_review":
+        raise ValueError("Only pending review crypto payment requests can be approved.")
+
+    before_payload = {
+        "status": payment_request.status,
+        "payment_id": payment_request.payment_id,
+        "review_note": payment_request.review_note,
+    }
+
+    payment = Payment.objects.create(
+        user=payment_request.user,
+        plan=payment_request.plan,
+        amount_usd=payment_request.expected_amount,
+        currency=payment_request.expected_currency,
+        payment_reference=payment_request.reference_code,
+        token_symbol=payment_request.token_symbol,
+        network_name=payment_request.network_name,
+        payer_address=payment_request.sender_address,
+        provider="crypto",
+        status="paid",
+        external_reference=payment_request.transaction_hash,
+        verified_at=timezone.now(),
+        verified_by=admin_user,
+        raw_payload={
+            "network": payment_request.network.code,
+            "wallet": payment_request.wallet.address if payment_request.wallet else "",
+            "reference_code": payment_request.reference_code,
+            "receiver_address": payment_request.receiver_address,
+            "transaction_hash": payment_request.transaction_hash,
+            "sender_address": payment_request.sender_address,
+        },
+    )
+
+    subscription = _activate_subscription_for_payment(user=payment_request.user, plan=payment_request.plan)
+
+    payment_request.status = "approved"
+    payment_request.reviewed_at = timezone.now()
+    payment_request.reviewed_by = admin_user
+    payment_request.review_note = note
+    payment_request.payment = payment
+    payment_request.save(
+        update_fields=["status", "reviewed_at", "reviewed_by", "review_note", "payment", "updated_at"]
+    )
+
+    after_payload = {
+        "status": payment_request.status,
+        "payment_id": payment.id,
+        "review_note": payment_request.review_note,
+        "subscription_id": subscription.id if subscription else None,
+    }
+    CryptoPaymentReviewLog.objects.create(
+        payment_request=payment_request,
+        actor=admin_user,
+        action="approved",
+        note=note,
+        before_payload=before_payload,
+        after_payload=after_payload,
+    )
+    log_admin_action(
+        actor=admin_user,
+        action_type="crypto.payment.approved",
+        target_type="crypto_payment_request",
+        target_id=str(payment_request.id),
+        before_payload=before_payload,
+        after_payload=after_payload,
+    )
+    return payment_request
+
+
+def reject_crypto_payment_request(*, payment_request: CryptoPaymentRequest, admin_user, note: str = ""):
+    if payment_request.status != "pending_review":
+        raise ValueError("Only pending review crypto payment requests can be rejected.")
+
+    before_payload = {
+        "status": payment_request.status,
+        "review_note": payment_request.review_note,
+    }
+
+    payment_request.status = "rejected"
+    payment_request.reviewed_at = timezone.now()
+    payment_request.reviewed_by = admin_user
+    payment_request.review_note = note
+    payment_request.save(update_fields=["status", "reviewed_at", "reviewed_by", "review_note", "updated_at"])
+
+    after_payload = {
+        "status": payment_request.status,
+        "review_note": payment_request.review_note,
+    }
+    CryptoPaymentReviewLog.objects.create(
+        payment_request=payment_request,
+        actor=admin_user,
+        action="rejected",
+        note=note,
+        before_payload=before_payload,
+        after_payload=after_payload,
+    )
+    log_admin_action(
+        actor=admin_user,
+        action_type="crypto.payment.rejected",
+        target_type="crypto_payment_request",
+        target_id=str(payment_request.id),
+        before_payload=before_payload,
+        after_payload=after_payload,
+    )
+    return payment_request
 
 
 def get_user_access_status(user) -> dict:
