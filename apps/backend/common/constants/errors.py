@@ -56,3 +56,15 @@ AUTH_ERRORS = {
         "message": "Invalid or expired token.",
     },
 }
+
+
+AI_ERRORS = {
+    "OPTIMIZATION_FAILED": {
+        "code": "AI_OPTIMIZATION_FAILED",
+        "message": "AI optimization failed.",
+    },
+    "NO_OPTIMIZED_CONTENT": {
+        "code": "NO_OPTIMIZED_CONTENT",
+        "message": "No optimized content is available for this generation.",
+    },
+}

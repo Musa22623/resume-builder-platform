@@ -14,3 +14,13 @@ class AdminContactMessage(models.Model):
     is_resolved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class AdminActionLog(models.Model):
+    actor = models.ForeignKey("accounts.User", on_delete=models.CASCADE, related_name="admin_action_logs")
+    action_type = models.CharField(max_length=100)
+    target_type = models.CharField(max_length=100)
+    target_id = models.CharField(max_length=100, blank=True)
+    before_payload = models.JSONField(default=dict, blank=True)
+    after_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

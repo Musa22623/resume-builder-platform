@@ -1,8 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from rest_framework import permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -74,7 +74,10 @@ class PasswordResetPlaceholderView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        return Response({"detail": "Password reset flow placeholder for MVP."})
+        return success_response(
+            message="Password reset flow placeholder for MVP.",
+            status=status.HTTP_200_OK,
+        )
 
 
 class LoginView(APIView):
@@ -174,37 +177,19 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        try:
-            # Get JWT Token (Through Authorization from Header)
-            refresh_token = request.data.get('refresh_token')
+        refresh_token = request.data.get("refresh_token")
+        if not refresh_token:
+            raise ValidationError(AUTH_ERRORS["REFRESH_TOKEN_REQUIRED"])
 
-            if not refresh_token:
-                return error_response(
-                    error={
-                        "code": "Required Refresh Token.",
-                        "message": "Refresh token is required.",
-                    }, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
+        try:
             logger.info("Logout:" + str(refresh_token))
-            # Validate Refresh Token and Add to BlackList
             token = RefreshToken(refresh_token)
             token.blacklist()
-
             logger.info("Logout_token:")
+        except Exception:
+            raise ValidationError(AUTH_ERRORS["INVALID_REFRESH_TOKEN"])
 
-
-            return success_response(
-                message=AUTH_MESSAGES["LOGOUT_SUCCESS"],
-                status=status.HTTP_200_OK,
-            )
-
-        except Exception as e:
-            return error_response(
-                error={
-                    "code": "INTERNAL_SERVER_ERROR",
-                    "message": f"Error logging out: {str(e)}",
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return success_response(
+            message=AUTH_MESSAGES["LOGOUT_SUCCESS"],
+            status=status.HTTP_200_OK,
+        )

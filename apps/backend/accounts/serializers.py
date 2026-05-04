@@ -9,6 +9,7 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from accounts.models import UserProfile
 from billing.models import TrialStatus
 from django.db import transaction
+from platform_settings.services import get_trial_settings
 
 from common.constants.errors import AUTH_ERRORS
 from common.responses import success_response, error_response
@@ -81,7 +82,12 @@ class SignUpSerializer(serializers.Serializer):
         profile.timezone = timezone_value
         profile.save()
 
-        TrialStatus.objects.get_or_create(user=user)
+        trial_settings = get_trial_settings()
+        if trial_settings["trial_enabled"]:
+            TrialStatus.objects.get_or_create(
+                user=user,
+                defaults={"trial_days": trial_settings["default_trial_days"]},
+            )
 
         return user
 

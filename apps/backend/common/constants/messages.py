@@ -13,6 +13,9 @@ AUTH_MESSAGES = {
 
 BILLING_MESSAGES = {
     "ACCESS_STATUS_SUCCESS": "Access status retrieved successfully.",
+    "PLANS_LIST_SUCCESS": "Subscription plans retrieved successfully.",
+    "CHECKOUT_SESSION_SUCCESS": "Stripe checkout session created successfully.",
+    "CRYPTO_WALLETS_SUCCESS": "Crypto payment wallets retrieved successfully.",
 }
 
 
@@ -46,4 +49,31 @@ AI_MESSAGES = {
     "OPTIMIZE_SUCCESS": "AI optimization preview generated successfully.",
     "GENERATION_DETAIL_SUCCESS": "AI generation detail retrieved successfully.",
     "APPLY_SUCCESS": "AI optimized content applied successfully.",
+}
+
+
+ADMIN_MESSAGES = {
+    "SETTINGS_LIST_SUCCESS": "Platform settings retrieved successfully.",
+    "USERS_LIST_SUCCESS": "Admin users retrieved successfully.",
+    "USER_DETAIL_SUCCESS": "Admin user retrieved successfully.",
+    "USER_UPDATE_SUCCESS": "Admin user updated successfully.",
+    "USER_ACCESS_STATUS_SUCCESS": "Admin user access status retrieved successfully.",
+    "USER_TRIAL_SUCCESS": "Admin user trial retrieved successfully.",
+    "USER_TRIAL_UPDATE_SUCCESS": "Admin user trial updated successfully.",
+    "PLANS_LIST_SUCCESS": "Admin plans retrieved successfully.",
+    "PLAN_DETAIL_SUCCESS": "Admin plan retrieved successfully.",
+    "PLAN_CREATE_SUCCESS": "Admin plan created successfully.",
+    "PLAN_UPDATE_SUCCESS": "Admin plan updated successfully.",
+    "PLAN_ACTIVATE_SUCCESS": "Admin plan activated successfully.",
+    "PLAN_DEACTIVATE_SUCCESS": "Admin plan deactivated successfully.",
+    "PLAN_ARCHIVE_SUCCESS": "Admin plan archived successfully.",
+    "TRIAL_SETTINGS_SUCCESS": "Trial settings retrieved successfully.",
+    "TRIAL_SETTINGS_UPDATE_SUCCESS": "Trial settings updated successfully.",
+    "OVERVIEW_SUCCESS": "Admin overview retrieved successfully.",
+    "ACTION_LOGS_LIST_SUCCESS": "Admin action logs retrieved successfully.",
+    "ACTION_LOG_DETAIL_SUCCESS": "Admin action log retrieved successfully.",
+    "CONTACT_MESSAGES_LIST_SUCCESS": "Admin contact messages retrieved successfully.",
+    "CONTACT_MESSAGE_DETAIL_SUCCESS": "Admin contact message retrieved successfully.",
+    "CONTACT_MESSAGE_CREATE_SUCCESS": "Admin contact message created successfully.",
+    "CONTACT_MESSAGE_UPDATE_SUCCESS": "Admin contact message updated successfully.",
 }

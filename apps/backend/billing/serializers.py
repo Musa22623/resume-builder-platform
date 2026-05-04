@@ -35,3 +35,8 @@ class AccessStatusSerializer(serializers.Serializer):
     trial = serializers.DictField()
     subscription = serializers.DictField()
     features = serializers.DictField()
+
+
+class StripeCheckoutSessionSerializer(serializers.Serializer):
+    plan_id = serializers.IntegerField(required=False)
+    plan_type = serializers.ChoiceField(choices=("monthly", "yearly"), required=False)
