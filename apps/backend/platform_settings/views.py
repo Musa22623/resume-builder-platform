@@ -1,30 +1,66 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 
 from ai_services.models import AIGenerationLog
-from billing.models import Payment, SubscriptionPlan, TrialStatus, UserSubscription
-from billing.services import get_user_access_status
-from common.constants.messages import ADMIN_MESSAGES
+from billing.models import (
+    CryptoNetwork,
+    CryptoPaymentRequest,
+    CryptoWallet,
+    Payment,
+    PlanCryptoAvailability,
+    SubscriptionPlan,
+    TrialStatus,
+    UserSubscription,
+)
+from billing.serializers import CryptoPaymentReviewSerializer
+from billing.services import approve_crypto_payment_request, get_user_access_status, reject_crypto_payment_request
+from common.constants.messages import ADMIN_MESSAGES, SUPPORT_MESSAGES
 from common.responses import success_response
-from platform_settings.models import AdminActionLog, AdminContactMessage, PlatformSetting
+from platform_settings.models import (
+    AdminActionLog,
+    AdminContactMessage,
+    PlatformSetting,
+    SupportConversation,
+    SupportMessage,
+)
 from platform_settings.serializers import (
     AdminActionLogSerializer,
     AdminContactMessageAdminSerializer,
     AdminContactMessageSerializer,
+    AdminCryptoNetworkSerializer,
+    AdminCryptoPaymentRequestSerializer,
+    AdminCryptoPaymentReviewLogSerializer,
+    AdminCryptoWalletSerializer,
     AdminOverviewSerializer,
     AdminPlanSerializer,
+    AdminPlanCryptoAvailabilitySerializer,
     AdminUserDetailSerializer,
     AdminUserListSerializer,
     AdminUserTrialSerializer,
     AdminUserUpdateSerializer,
     PlatformSettingSerializer,
+    SupportConversationCreateSerializer,
+    SupportConversationDetailSerializer,
+    SupportConversationListSerializer,
+    SupportConversationUpdateSerializer,
+    SupportMessageCreateSerializer,
+    SupportMessageSerializer,
     TrialSettingsSerializer,
 )
-from platform_settings.services import get_trial_settings, has_platform_admin_access, log_admin_action, set_platform_setting
+from platform_settings.services import (
+    get_trial_settings,
+    has_platform_admin_access,
+    log_admin_action,
+    mark_conversation_read,
+    set_platform_setting,
+    update_conversation_after_message,
+)
 
 User = get_user_model()
 
@@ -44,6 +80,99 @@ class PlatformSettingViewSet(viewsets.ModelViewSet):
         return success_response(
             message=ADMIN_MESSAGES["SETTINGS_LIST_SUCCESS"],
             data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class SupportConversationUserViewSet(viewsets.GenericViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = SupportConversation.objects.all().select_related("user", "assigned_admin").order_by("-last_message_at", "-updated_at")
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        return self.queryset.filter(user=self.request.user)
+
+    def _serialize_conversation(self, conversation):
+        return SupportConversationDetailSerializer(conversation, context={"reader": self.request.user}).data
+
+    def list(self, request, *args, **kwargs):
+        serializer = SupportConversationListSerializer(
+            self.get_queryset(),
+            many=True,
+            context={"reader": request.user},
+        )
+        return success_response(
+            message=SUPPORT_MESSAGES["CONVERSATIONS_LIST_SUCCESS"],
+            data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        conversation = self.get_object()
+        return success_response(
+            message=SUPPORT_MESSAGES["CONVERSATION_DETAIL_SUCCESS"],
+            data={"conversation": self._serialize_conversation(conversation)},
+            status=status.HTTP_200_OK,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = SupportConversationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        conversation = SupportConversation.objects.create(
+            user=request.user,
+            subject=serializer.validated_data.get("subject", ""),
+            status="open",
+        )
+        message = SupportMessage.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            sender_role="user",
+            message=serializer.validated_data["message"],
+            is_internal_note=False,
+        )
+        update_conversation_after_message(conversation=conversation, message=message)
+        mark_conversation_read(conversation=conversation, reader=request.user, last_message=message)
+        return success_response(
+            message=SUPPORT_MESSAGES["CONVERSATION_CREATE_SUCCESS"],
+            data={"conversation": self._serialize_conversation(conversation)},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["get", "post"], url_path="messages")
+    def messages(self, request, pk=None):
+        conversation = self.get_object()
+        if request.method.lower() == "get":
+            serializer = SupportMessageSerializer(conversation.messages.order_by("created_at"), many=True)
+            return success_response(
+                message=SUPPORT_MESSAGES["MESSAGES_LIST_SUCCESS"],
+                data={"items": serializer.data},
+                status=status.HTTP_200_OK,
+            )
+
+        serializer = SupportMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = SupportMessage.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            sender_role="user",
+            message=serializer.validated_data["message"],
+            is_internal_note=False,
+        )
+        update_conversation_after_message(conversation=conversation, message=message)
+        mark_conversation_read(conversation=conversation, reader=request.user, last_message=message)
+        return success_response(
+            message=SUPPORT_MESSAGES["MESSAGE_CREATE_SUCCESS"],
+            data={"message": SupportMessageSerializer(message).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        conversation = self.get_object()
+        mark_conversation_read(conversation=conversation, reader=request.user)
+        return success_response(
+            message=SUPPORT_MESSAGES["MARK_READ_SUCCESS"],
+            data={},
             status=status.HTTP_200_OK,
         )
 
@@ -381,6 +510,254 @@ class AdminPlansViewSet(viewsets.ModelViewSet):
         )
 
 
+class AdminCryptoNetworkViewSet(viewsets.ModelViewSet):
+    queryset = CryptoNetwork.objects.all().order_by("sort_order", "id")
+    serializer_class = AdminCryptoNetworkSerializer
+    permission_classes = [IsPlatformAdmin]
+
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_NETWORKS_LIST_SUCCESS"],
+            data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_admin_action(
+            actor=request.user,
+            action_type="crypto.network.created",
+            target_type="crypto_network",
+            target_id=str(serializer.instance.id),
+            before_payload={},
+            after_payload=serializer.data,
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_NETWORK_CREATE_SUCCESS"],
+            data={"network": serializer.data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        before_payload = AdminCryptoNetworkSerializer(instance).data
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_admin_action(
+            actor=request.user,
+            action_type="crypto.network.updated",
+            target_type="crypto_network",
+            target_id=str(instance.id),
+            before_payload=before_payload,
+            after_payload=AdminCryptoNetworkSerializer(instance).data,
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_NETWORK_UPDATE_SUCCESS"],
+            data={"network": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminCryptoWalletViewSet(viewsets.ModelViewSet):
+    queryset = CryptoWallet.objects.all().select_related("network").order_by("network__sort_order", "id")
+    serializer_class = AdminCryptoWalletSerializer
+    permission_classes = [IsPlatformAdmin]
+
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_WALLETS_LIST_SUCCESS"],
+            data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_admin_action(
+            actor=request.user,
+            action_type="crypto.wallet.created",
+            target_type="crypto_wallet",
+            target_id=str(serializer.instance.id),
+            before_payload={},
+            after_payload=serializer.data,
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_WALLET_CREATE_SUCCESS"],
+            data={"wallet": serializer.data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        before_payload = AdminCryptoWalletSerializer(instance).data
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_admin_action(
+            actor=request.user,
+            action_type="crypto.wallet.updated",
+            target_type="crypto_wallet",
+            target_id=str(instance.id),
+            before_payload=before_payload,
+            after_payload=AdminCryptoWalletSerializer(instance).data,
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_WALLET_UPDATE_SUCCESS"],
+            data={"wallet": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminPlanCryptoAvailabilityViewSet(viewsets.ModelViewSet):
+    queryset = PlanCryptoAvailability.objects.all().select_related("plan", "network").order_by("plan__display_order", "id")
+    serializer_class = AdminPlanCryptoAvailabilitySerializer
+    permission_classes = [IsPlatformAdmin]
+
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PLAN_AVAILABILITY_LIST_SUCCESS"],
+            data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_admin_action(
+            actor=request.user,
+            action_type="crypto.plan_availability.created",
+            target_type="plan_crypto_availability",
+            target_id=str(serializer.instance.id),
+            before_payload={},
+            after_payload=serializer.data,
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PLAN_AVAILABILITY_CREATE_SUCCESS"],
+            data={"availability": serializer.data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        before_payload = AdminPlanCryptoAvailabilitySerializer(instance).data
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log_admin_action(
+            actor=request.user,
+            action_type="crypto.plan_availability.updated",
+            target_type="plan_crypto_availability",
+            target_id=str(instance.id),
+            before_payload=before_payload,
+            after_payload=AdminPlanCryptoAvailabilitySerializer(instance).data,
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PLAN_AVAILABILITY_UPDATE_SUCCESS"],
+            data={"availability": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminCryptoPaymentRequestViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = (
+        CryptoPaymentRequest.objects.all()
+        .select_related("user", "plan", "network", "wallet", "reviewed_by", "payment")
+        .order_by("-created_at")
+    )
+    serializer_class = AdminCryptoPaymentRequestSerializer
+    permission_classes = [IsPlatformAdmin]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        status_filter = self.request.query_params.get("status", "").strip()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        plan_id = self.request.query_params.get("plan_id", "").strip()
+        if plan_id:
+            queryset = queryset.filter(plan_id=plan_id)
+
+        network_id = self.request.query_params.get("network_id", "").strip()
+        if network_id:
+            queryset = queryset.filter(network_id=network_id)
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PAYMENT_REQUESTS_LIST_SUCCESS"],
+            data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_object())
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PAYMENT_REQUEST_DETAIL_SUCCESS"],
+            data={"payment_request": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        payment_request = self.get_object()
+        serializer = CryptoPaymentReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payment_request = approve_crypto_payment_request(
+                payment_request=payment_request,
+                admin_user=request.user,
+                note=serializer.validated_data.get("note", ""),
+            )
+        except ValueError as exc:
+            raise ValidationError({"code": "CRYPTO_PAYMENT_APPROVAL_INVALID", "message": str(exc)})
+
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PAYMENT_REQUEST_APPROVE_SUCCESS"],
+            data={"payment_request": AdminCryptoPaymentRequestSerializer(payment_request).data},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        payment_request = self.get_object()
+        serializer = CryptoPaymentReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payment_request = reject_crypto_payment_request(
+                payment_request=payment_request,
+                admin_user=request.user,
+                note=serializer.validated_data.get("note", ""),
+            )
+        except ValueError as exc:
+            raise ValidationError({"code": "CRYPTO_PAYMENT_REJECTION_INVALID", "message": str(exc)})
+
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PAYMENT_REQUEST_REJECT_SUCCESS"],
+            data={"payment_request": AdminCryptoPaymentRequestSerializer(payment_request).data},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["get"], url_path="review-logs")
+    def review_logs(self, request, pk=None):
+        payment_request = self.get_object()
+        serializer = AdminCryptoPaymentReviewLogSerializer(payment_request.review_logs.all().order_by("-created_at"), many=True)
+        return success_response(
+            message=ADMIN_MESSAGES["CRYPTO_PAYMENT_REVIEW_LOGS_SUCCESS"],
+            data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+
 class TrialSettingsView(APIView):
     permission_classes = [IsPlatformAdmin]
 
@@ -470,6 +847,156 @@ class AdminActionLogViewSet(viewsets.ReadOnlyModelViewSet):
         return success_response(
             message=ADMIN_MESSAGES["ACTION_LOG_DETAIL_SUCCESS"],
             data={"log": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminSupportConversationViewSet(viewsets.GenericViewSet):
+    permission_classes = [IsPlatformAdmin]
+    queryset = SupportConversation.objects.all().select_related("user", "assigned_admin").order_by("-last_message_at", "-updated_at")
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        queryset = self.queryset
+
+        status_filter = self.request.query_params.get("status", "").strip()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        assigned_admin = self.request.query_params.get("assigned_admin", "").strip()
+        if assigned_admin:
+            if assigned_admin == "unassigned":
+                queryset = queryset.filter(assigned_admin__isnull=True)
+            else:
+                queryset = queryset.filter(assigned_admin_id=assigned_admin)
+
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(
+                Q(subject__icontains=search)
+                | Q(user__email__icontains=search)
+                | Q(last_message_preview__icontains=search)
+            )
+
+        has_unread = self.request.query_params.get("has_unread", "").strip().lower()
+        if has_unread in {"true", "false"}:
+            filtered_ids = []
+            for conversation in queryset:
+                unread_count = SupportConversationListSerializer(
+                    conversation,
+                    context={"reader": self.request.user},
+                ).data["unread_count"]
+                if (has_unread == "true" and unread_count > 0) or (has_unread == "false" and unread_count == 0):
+                    filtered_ids.append(conversation.id)
+            queryset = queryset.filter(id__in=filtered_ids)
+
+        return queryset
+
+    def _serialize_conversation(self, conversation):
+        return SupportConversationDetailSerializer(conversation, context={"reader": self.request.user}).data
+
+    def list(self, request, *args, **kwargs):
+        serializer = SupportConversationListSerializer(
+            self.get_queryset(),
+            many=True,
+            context={"reader": request.user},
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["SUPPORT_CONVERSATIONS_LIST_SUCCESS"],
+            data={"items": serializer.data},
+            status=status.HTTP_200_OK,
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        conversation = self.get_object()
+        return success_response(
+            message=ADMIN_MESSAGES["SUPPORT_CONVERSATION_DETAIL_SUCCESS"],
+            data={"conversation": self._serialize_conversation(conversation)},
+            status=status.HTTP_200_OK,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        conversation = self.get_object()
+        before_payload = {
+            "status": conversation.status,
+            "assigned_admin_id": conversation.assigned_admin_id,
+            "closed_at": conversation.closed_at.isoformat() if conversation.closed_at else None,
+        }
+        serializer = SupportConversationUpdateSerializer(conversation, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        if "status" in serializer.validated_data:
+            conversation.closed_at = timezone.now() if conversation.status == "closed" else None
+            conversation.save(update_fields=["closed_at", "updated_at"])
+
+        log_admin_action(
+            actor=request.user,
+            action_type="support.conversation.updated",
+            target_type="support_conversation",
+            target_id=str(conversation.id),
+            before_payload=before_payload,
+            after_payload={
+                "status": conversation.status,
+                "assigned_admin_id": conversation.assigned_admin_id,
+                "closed_at": conversation.closed_at.isoformat() if conversation.closed_at else None,
+            },
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["SUPPORT_CONVERSATION_UPDATE_SUCCESS"],
+            data={"conversation": self._serialize_conversation(conversation)},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["get", "post"], url_path="messages")
+    def messages(self, request, pk=None):
+        conversation = self.get_object()
+        if request.method.lower() == "get":
+            serializer = SupportMessageSerializer(conversation.messages.order_by("created_at"), many=True)
+            return success_response(
+                message=ADMIN_MESSAGES["SUPPORT_MESSAGES_LIST_SUCCESS"],
+                data={"items": serializer.data},
+                status=status.HTTP_200_OK,
+            )
+
+        serializer = SupportMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = SupportMessage.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            sender_role="admin",
+            message=serializer.validated_data["message"],
+            is_internal_note=serializer.validated_data.get("is_internal_note", False),
+        )
+        if conversation.assigned_admin_id is None:
+            conversation.assigned_admin = request.user
+            conversation.save(update_fields=["assigned_admin", "updated_at"])
+        update_conversation_after_message(conversation=conversation, message=message)
+        mark_conversation_read(conversation=conversation, reader=request.user, last_message=message)
+        log_admin_action(
+            actor=request.user,
+            action_type="support.message.created",
+            target_type="support_conversation",
+            target_id=str(conversation.id),
+            before_payload={},
+            after_payload={
+                "message_id": message.id,
+                "is_internal_note": message.is_internal_note,
+            },
+        )
+        return success_response(
+            message=ADMIN_MESSAGES["SUPPORT_MESSAGE_CREATE_SUCCESS"],
+            data={"message": SupportMessageSerializer(message).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        conversation = self.get_object()
+        mark_conversation_read(conversation=conversation, reader=request.user)
+        return success_response(
+            message=ADMIN_MESSAGES["SUPPORT_MARK_READ_SUCCESS"],
+            data={},
             status=status.HTTP_200_OK,
         )
 

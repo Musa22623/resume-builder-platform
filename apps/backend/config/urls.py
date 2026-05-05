@@ -9,4 +9,5 @@ urlpatterns = [
     path("api/v1/ai/", include("ai_services.urls")),
     path("api/v1/billing/", include("billing.urls")),
     path("api/v1/admin/", include("platform_settings.urls")),
+    path("api/v1/support/", include("platform_settings.support_urls")),
 ]

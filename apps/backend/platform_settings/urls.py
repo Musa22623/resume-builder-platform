@@ -4,8 +4,13 @@ from rest_framework.routers import DefaultRouter
 from platform_settings.views import (
     AdminActionLogViewSet,
     AdminContactMessageViewSet,
+    AdminCryptoNetworkViewSet,
+    AdminCryptoPaymentRequestViewSet,
+    AdminCryptoWalletViewSet,
     AdminOverviewView,
     AdminPlansViewSet,
+    AdminPlanCryptoAvailabilityViewSet,
+    AdminSupportConversationViewSet,
     AdminUsersViewSet,
     PlatformSettingViewSet,
     TrialSettingsView,
@@ -17,6 +22,11 @@ router.register("users", AdminUsersViewSet, basename="admin-users")
 router.register("plans", AdminPlansViewSet, basename="admin-plans")
 router.register("action-logs", AdminActionLogViewSet, basename="admin-action-logs")
 router.register("contact-messages", AdminContactMessageViewSet, basename="contact-messages")
+router.register("support/conversations", AdminSupportConversationViewSet, basename="admin-support-conversations")
+router.register("crypto/networks", AdminCryptoNetworkViewSet, basename="admin-crypto-networks")
+router.register("crypto/wallets", AdminCryptoWalletViewSet, basename="admin-crypto-wallets")
+router.register("crypto/plan-availability", AdminPlanCryptoAvailabilityViewSet, basename="admin-crypto-plan-availability")
+router.register("crypto/payment-requests", AdminCryptoPaymentRequestViewSet, basename="admin-crypto-payment-requests")
 
 urlpatterns = [
     path("", include(router.urls)),

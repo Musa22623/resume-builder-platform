@@ -1,9 +1,20 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from rest_framework import serializers
 
-from billing.models import SubscriptionPlan, TrialStatus
+from billing.models import (
+    CryptoNetwork,
+    CryptoPaymentRequest,
+    CryptoPaymentReviewLog,
+    CryptoWallet,
+    PlanCryptoAvailability,
+    SubscriptionPlan,
+    TrialStatus,
+)
 from billing.services import get_user_access_status
 from platform_settings.models import AdminActionLog, AdminContactMessage, PlatformSetting
+from platform_settings.models import SupportConversation, SupportConversationReadState, SupportMessage
+from platform_settings.services import get_unread_count
 
 User = get_user_model()
 
@@ -119,6 +130,88 @@ class AdminPlanSerializer(serializers.ModelSerializer):
         )
 
 
+class AdminCryptoNetworkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CryptoNetwork
+        fields = "__all__"
+
+
+class AdminCryptoWalletSerializer(serializers.ModelSerializer):
+    network_code = serializers.CharField(source="network.code", read_only=True)
+
+    class Meta:
+        model = CryptoWallet
+        fields = "__all__"
+
+
+class AdminPlanCryptoAvailabilitySerializer(serializers.ModelSerializer):
+    plan_name = serializers.CharField(source="plan.name", read_only=True)
+    network_code = serializers.CharField(source="network.code", read_only=True)
+
+    class Meta:
+        model = PlanCryptoAvailability
+        fields = "__all__"
+
+
+class AdminCryptoPaymentRequestSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    plan_name = serializers.CharField(source="plan.name", read_only=True)
+    network_code = serializers.CharField(source="network.code", read_only=True)
+    wallet_address = serializers.CharField(source="wallet.address", read_only=True)
+    reviewed_by_email = serializers.EmailField(source="reviewed_by.email", read_only=True)
+
+    class Meta:
+        model = CryptoPaymentRequest
+        fields = (
+            "id",
+            "user",
+            "user_email",
+            "plan",
+            "plan_name",
+            "network",
+            "network_code",
+            "wallet",
+            "wallet_address",
+            "reference_code",
+            "expected_amount",
+            "expected_currency",
+            "token_symbol",
+            "network_name",
+            "receiver_address",
+            "instruction_snapshot",
+            "transaction_hash",
+            "sender_address",
+            "status",
+            "expires_at",
+            "submitted_at",
+            "reviewed_at",
+            "reviewed_by",
+            "reviewed_by_email",
+            "review_note",
+            "payment",
+            "created_at",
+            "updated_at",
+        )
+
+
+class AdminCryptoPaymentReviewLogSerializer(serializers.ModelSerializer):
+    actor_email = serializers.EmailField(source="actor.email", read_only=True)
+
+    class Meta:
+        model = CryptoPaymentReviewLog
+        fields = (
+            "id",
+            "payment_request",
+            "actor",
+            "actor_email",
+            "action",
+            "note",
+            "before_payload",
+            "after_payload",
+            "created_at",
+        )
+
+
 class AdminActionLogSerializer(serializers.ModelSerializer):
     actor_email = serializers.EmailField(source="actor.email", read_only=True)
 
@@ -152,3 +245,102 @@ class AdminContactMessageAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdminContactMessage
         fields = ("id", "user", "user_email", "message", "admin_reply", "is_resolved", "created_at", "updated_at")
+
+
+class SupportMessageSerializer(serializers.ModelSerializer):
+    sender_email = serializers.EmailField(source="sender.email", read_only=True)
+
+    class Meta:
+        model = SupportMessage
+        fields = (
+            "id",
+            "conversation",
+            "sender",
+            "sender_email",
+            "sender_role",
+            "message",
+            "is_internal_note",
+            "created_at",
+        )
+
+
+class SupportConversationListSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    assigned_admin_email = serializers.EmailField(source="assigned_admin.email", read_only=True)
+    unread_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportConversation
+        fields = (
+            "id",
+            "user",
+            "user_email",
+            "subject",
+            "status",
+            "assigned_admin",
+            "assigned_admin_email",
+            "last_message_at",
+            "last_message_preview",
+            "created_at",
+            "updated_at",
+            "unread_count",
+        )
+
+    def get_unread_count(self, obj):
+        reader = self.context.get("reader")
+        if not reader:
+            return 0
+        return get_unread_count(conversation=obj, reader=reader)
+
+
+class SupportConversationDetailSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    assigned_admin_email = serializers.EmailField(source="assigned_admin.email", read_only=True)
+    unread_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportConversation
+        fields = (
+            "id",
+            "user",
+            "user_email",
+            "subject",
+            "status",
+            "assigned_admin",
+            "assigned_admin_email",
+            "last_message_at",
+            "last_message_preview",
+            "closed_at",
+            "created_at",
+            "updated_at",
+            "unread_count",
+        )
+
+    def get_unread_count(self, obj):
+        reader = self.context.get("reader")
+        if not reader:
+            return 0
+        return get_unread_count(conversation=obj, reader=reader)
+
+
+class SupportConversationCreateSerializer(serializers.Serializer):
+    subject = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    message = serializers.CharField()
+
+
+class SupportConversationUpdateSerializer(serializers.ModelSerializer):
+    status = serializers.ChoiceField(choices=("open", "pending_admin", "pending_user", "closed"), required=False)
+    assigned_admin = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(Q(role="ADMIN") | Q(is_staff=True)),
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = SupportConversation
+        fields = ("status", "assigned_admin")
+
+
+class SupportMessageCreateSerializer(serializers.Serializer):
+    message = serializers.CharField()
+    is_internal_note = serializers.BooleanField(required=False, default=False)
