@@ -33,13 +33,27 @@ const SendIcon = () => (
 const AdminChatbotWidget = () => {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const [conversation, setConversation] = useState(null);
   const [history, setHistory] = useState([]);
   const [status, setStatus] = useState("");
 
+  const loadMessages = async (conversationId) => {
+    const { data } = await api.get(`/api/v1/support/conversations/${conversationId}/messages/`);
+    setHistory(data.items || []);
+    await api.post(`/api/v1/support/conversations/${conversationId}/mark-read/`);
+  };
+
   const loadHistory = async () => {
     try {
-      const { data } = await api.get("/api/admin/contact-messages/");
-      setHistory(data);
+      const { data } = await api.get("/api/v1/support/conversations/");
+      const nextConversation = data.items?.[0] || null;
+      setConversation(nextConversation);
+
+      if (nextConversation) {
+        await loadMessages(nextConversation.id);
+      } else {
+        setHistory([]);
+      }
     } catch {
       setStatus("Failed to load messages.");
     }
@@ -51,11 +65,24 @@ const AdminChatbotWidget = () => {
 
   const send = async () => {
     if (!message.trim()) return;
+    const nextMessage = message.trim();
+
     try {
-      await api.post("/api/admin/contact-messages/", { message: message.trim() });
+      let conversationId = conversation?.id;
+      if (conversationId) {
+        await api.post(`/api/v1/support/conversations/${conversationId}/messages/`, { message: nextMessage });
+      } else {
+        const { data } = await api.post("/api/v1/support/conversations/", {
+          subject: "Support request",
+          message: nextMessage,
+        });
+        conversationId = data.conversation?.id;
+        setConversation(data.conversation || null);
+      }
+
       setMessage("");
       setStatus("Message sent to admin.");
-      await loadHistory();
+      if (conversationId) await loadMessages(conversationId);
     } catch {
       setStatus("Failed to send message.");
     }
@@ -115,17 +142,14 @@ const AdminChatbotWidget = () => {
         <div className="max-h-[300px] space-y-3 overflow-y-auto rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-3">
           {history.map((item) => (
             <div className="space-y-2" key={item.id}>
-              <div className="ml-auto max-w-[88%] rounded-[1.1rem] rounded-br-md bg-slate-900 px-3 py-2.5 text-sm leading-6 text-white shadow-sm">
-                {item.message}
-              </div>
-              {item.admin_reply ? (
+              {item.sender_role === "admin" ? (
                 <div className="max-w-[88%] rounded-[1.1rem] rounded-bl-md border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-700 shadow-sm">
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">Admin</p>
-                  {item.admin_reply}
+                  {item.message}
                 </div>
               ) : (
-                <div className="max-w-[88%] rounded-[1.1rem] rounded-bl-md border border-dashed border-slate-200 bg-white/70 px-3 py-2 text-xs font-medium text-slate-400">
-                  Waiting for admin reply
+                <div className="ml-auto max-w-[88%] rounded-[1.1rem] rounded-br-md bg-slate-900 px-3 py-2.5 text-sm leading-6 text-white shadow-sm">
+                  {item.message}
                 </div>
               )}
             </div>

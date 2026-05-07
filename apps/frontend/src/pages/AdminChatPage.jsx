@@ -62,10 +62,12 @@ const getUserEmail = (message) =>
 
 const getLastActivityAt = (message) => message?.updated_at || message?.created_at;
 
-const getHasUnreadSignal = (message) => !message.is_resolved && !message.admin_reply;
+const isConversationResolved = (message) => message.status === "closed";
+
+const getHasUnreadSignal = (message) => Number(message.unread_count || 0) > 0;
 
 const getPriority = (message) => {
-  const haystack = [message?.message, message?.admin_reply, message?.email, message?.username]
+  const haystack = [message?.subject, message?.last_message_preview, message?.user_email, message?.email, message?.username]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -82,8 +84,8 @@ const getPriority = (message) => {
 };
 
 const getFilterCount = (messages, filterId) => {
-  if (filterId === "open") return messages.filter((message) => !message.is_resolved).length;
-  if (filterId === "resolved") return messages.filter((message) => message.is_resolved).length;
+  if (filterId === "open") return messages.filter((message) => !isConversationResolved(message)).length;
+  if (filterId === "resolved") return messages.filter((message) => isConversationResolved(message)).length;
   return messages.length;
 };
 
@@ -95,6 +97,7 @@ const filterOptions = [
 
 const AdminChatPage = () => {
   const [messages, setMessages] = useState([]);
+  const [selectedThreadMessages, setSelectedThreadMessages] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [feedback, setFeedback] = useState(null);
@@ -108,8 +111,8 @@ const AdminChatPage = () => {
   const loadMessages = async ({ silent = false } = {}) => {
     try {
       if (!silent) setIsLoading(true);
-      const { data } = await api.get("/api/admin/contact-messages/");
-      const nextMessages = Array.isArray(data) ? data : [];
+      const { data } = await api.get("/api/v1/admin/support/conversations/");
+      const nextMessages = data.items || [];
 
       setMessages(nextMessages);
       setLoadError("");
@@ -137,16 +140,16 @@ const AdminChatPage = () => {
     }
   }, []);
 
-  const openCount = useMemo(() => messages.filter((message) => !message.is_resolved).length, [messages]);
-  const resolvedCount = useMemo(() => messages.filter((message) => message.is_resolved).length, [messages]);
+  const openCount = useMemo(() => messages.filter((message) => !isConversationResolved(message)).length, [messages]);
+  const resolvedCount = useMemo(() => messages.filter((message) => isConversationResolved(message)).length, [messages]);
   const unreadCount = useMemo(() => messages.filter(getHasUnreadSignal).length, [messages]);
 
   const filteredMessages = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return messages.filter((message) => {
-      if (activeFilter === "open" && message.is_resolved) return false;
-      if (activeFilter === "resolved" && !message.is_resolved) return false;
+      if (activeFilter === "open" && isConversationResolved(message)) return false;
+      if (activeFilter === "resolved" && !isConversationResolved(message)) return false;
 
       if (!normalizedQuery) return true;
 
@@ -154,8 +157,8 @@ const AdminChatPage = () => {
         getUserDisplayName(message),
         getUserEmail(message),
         message.username,
-        message.message,
-        message.admin_reply,
+        message.subject,
+        message.last_message_preview,
       ]
         .filter(Boolean)
         .join(" ")
@@ -186,6 +189,29 @@ const AdminChatPage = () => {
     setReplyText("");
   }, [selectedId]);
 
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedThreadMessages([]);
+      return undefined;
+    }
+
+    let isMounted = true;
+    api
+      .get(`/api/v1/admin/support/conversations/${selectedId}/messages/`)
+      .then(({ data }) => {
+        if (isMounted) setSelectedThreadMessages(data.items || []);
+      })
+      .catch(() => {
+        if (isMounted) setSelectedThreadMessages([]);
+      });
+
+    api.post(`/api/v1/admin/support/conversations/${selectedId}/mark-read/`).catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedId]);
+
   const commitRecentSearch = (value) => {
     const trimmedValue = value.trim();
     if (!trimmedValue) return;
@@ -202,10 +228,12 @@ const AdminChatPage = () => {
 
     try {
       setIsSubmitting(true);
-      await api.patch(`/api/admin/contact-messages/${selected.id}/`, {
-        admin_reply: replyText.trim(),
-        is_resolved: resolve,
+      await api.post(`/api/v1/admin/support/conversations/${selected.id}/messages/`, {
+        message: replyText.trim(),
       });
+      if (resolve) {
+        await api.patch(`/api/v1/admin/support/conversations/${selected.id}/`, { status: "closed" });
+      }
       setReplyText("");
       setFeedback({
         tone: "success",
@@ -224,8 +252,8 @@ const AdminChatPage = () => {
 
     try {
       setIsSubmitting(true);
-      await api.patch(`/api/admin/contact-messages/${message.id}/`, {
-        is_resolved: isResolved,
+      await api.patch(`/api/v1/admin/support/conversations/${message.id}/`, {
+        status: isResolved ? "closed" : "open",
       });
       setFeedback({
         tone: "success",
@@ -252,6 +280,8 @@ const AdminChatPage = () => {
 
   const selectedPriority = selected ? getPriority(selected) : null;
   const selectedEmail = selected ? getUserEmail(selected) : "";
+  const selectedUser = selected ? { id: selected.user, email: selected.user_email } : null;
+  const lastAdminMessage = [...selectedThreadMessages].reverse().find((item) => item.sender_role === "admin" && !item.is_internal_note);
 
   return (
     <div className="space-y-4">
@@ -410,7 +440,7 @@ const AdminChatPage = () => {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             {hasUnread ? <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" /> : null}
-                            <p className="truncate text-sm font-semibold text-slate-900">{getUserDisplayName(message)}</p>
+                            <p className="truncate text-sm font-semibold text-slate-900">{getUserDisplayName({ id: message.user, email: message.user_email })}</p>
                           </div>
                           <p className="mt-1 truncate text-xs font-semibold text-slate-500">
                             {email || getMessageMeta(message)}
@@ -421,10 +451,10 @@ const AdminChatPage = () => {
                         </div>
                         <span
                           className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                            getStatusBadgeClassName(message.is_resolved)
+                            getStatusBadgeClassName(isConversationResolved(message))
                           }`}
                         >
-                          {message.is_resolved ? "Resolved" : "Open"}
+                          {isConversationResolved(message) ? "Resolved" : "Open"}
                         </span>
                       </div>
 
@@ -443,17 +473,17 @@ const AdminChatPage = () => {
                         ) : null}
                       </div>
 
-                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{message.message}</p>
+                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{message.last_message_preview || message.subject || "No message preview yet."}</p>
                     </button>
 
                     <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
                       <button
                         className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-teal-300 hover:text-teal-700 disabled:pointer-events-none disabled:opacity-50"
                         disabled={isSubmitting}
-                        onClick={() => updateMessageResolution(message, !message.is_resolved)}
+                        onClick={() => updateMessageResolution(message, !isConversationResolved(message))}
                         type="button"
                       >
-                        {message.is_resolved ? "Reopen" : "Mark as resolved"}
+                        {isConversationResolved(message) ? "Reopen" : "Mark as resolved"}
                       </button>
                     </div>
                   </article>
@@ -493,13 +523,13 @@ const AdminChatPage = () => {
                     ) : null}
                   </div>
                   <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-                    {getUserDisplayName(selected)}
+                    {getUserDisplayName(selectedUser)}
                   </h3>
                   <p className="mt-2 text-sm font-semibold text-slate-600">{selectedEmail || getMessageMeta(selected)}</p>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
                     <span className="rounded-full bg-slate-100 px-3 py-1">Received: {formatRelativeTime(selected.created_at)}</span>
                     <span className="rounded-full bg-slate-100 px-3 py-1">
-                      Last reply: {selected.admin_reply ? formatRelativeTime(selected.updated_at) : "No reply yet"}
+                      Last reply: {lastAdminMessage ? formatRelativeTime(lastAdminMessage.created_at) : "No reply yet"}
                     </span>
                     <span className="rounded-full bg-slate-100 px-3 py-1">{formatTimestamp(selected.created_at)}</span>
                   </div>
@@ -513,20 +543,20 @@ const AdminChatPage = () => {
                   >
                     {selectedPriority.label}
                   </span>
-                  <span
+                    <span
                     className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${getStatusBadgeClassName(
-                      selected.is_resolved,
+                      isConversationResolved(selected),
                     )}`}
                   >
-                    {selected.is_resolved ? "Resolved" : "Open"}
+                    {isConversationResolved(selected) ? "Resolved" : "Open"}
                   </span>
                   <button
                     className="rb-btn-secondary px-3 py-2 text-xs"
                     disabled={isSubmitting}
-                    onClick={() => updateMessageResolution(selected, !selected.is_resolved)}
+                    onClick={() => updateMessageResolution(selected, !isConversationResolved(selected))}
                     type="button"
                   >
-                    {selected.is_resolved ? "Reopen" : "Mark as Resolved"}
+                    {isConversationResolved(selected) ? "Reopen" : "Mark as Resolved"}
                   </button>
                 </div>
               </div>
@@ -538,18 +568,18 @@ const AdminChatPage = () => {
                       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Message</p>
                       <span className="text-xs font-semibold text-slate-400">{formatRelativeTime(selected.created_at)}</span>
                     </div>
-                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{selected.message}</p>
+                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{selected.last_message_preview || selected.subject || "No message preview yet."}</p>
                   </article>
 
                   <article className="rounded-xl border border-slate-200 bg-white px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Previous reply</p>
                       <span className="text-xs font-medium text-slate-400">
-                        {selected.admin_reply ? "Sent" : "No response yet"}
+                        {lastAdminMessage ? "Sent" : "No response yet"}
                       </span>
                     </div>
                     <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">
-                      {selected.admin_reply || "Reply here to keep the user moving. Resolve the ticket when the issue is handled."}
+                      {lastAdminMessage?.message || "Reply here to keep the user moving. Resolve the ticket when the issue is handled."}
                     </p>
                   </article>
                 </div>
@@ -583,7 +613,7 @@ const AdminChatPage = () => {
                     </button>
                     <button
                       className="rb-btn-secondary h-11 w-full justify-center"
-                      disabled={isSubmitting || selected.is_resolved}
+                      disabled={isSubmitting || isConversationResolved(selected)}
                       onClick={() => updateMessageResolution(selected, true)}
                       type="button"
                     >
@@ -603,7 +633,7 @@ const AdminChatPage = () => {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Quick context</p>
                     <div className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
                       <p>Priority: {selectedPriority.label}</p>
-                      <p>Status: {selected.is_resolved ? "Resolved" : "Open"}</p>
+                      <p>Status: {isConversationResolved(selected) ? "Resolved" : "Open"}</p>
                       <p>Last activity: {formatRelativeTime(getLastActivityAt(selected))}</p>
                     </div>
                   </div>

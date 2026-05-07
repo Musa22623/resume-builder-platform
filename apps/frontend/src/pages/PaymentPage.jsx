@@ -63,11 +63,26 @@ const cryptoChecklist = [
 ];
 
 const trustItems = ["Secure payment via Stripe", "No hidden fees", "Cancel anytime", "Instant access after payment"];
-const cryptoTrustItems = ["Secure wallet system", "Auto-detection of transactions", "No manual verification needed"];
+const cryptoTrustItems = ["Secure wallet system", "Transaction hash review", "Reference code tracking"];
 const networkDescriptions = {
   "USDT (ERC-20)": "Ethereum network",
   "USDT (TRC-20)": "Tron network - lower fees",
 };
+
+const normalizeCryptoWallets = (payload) =>
+  (payload.networks || []).flatMap((network) =>
+    (network.wallets || []).map((wallet) => ({
+      ...wallet,
+      key: `${network.id}:${wallet.id}`,
+      networkId: network.id,
+      network: network.display_name || network.code,
+      networkCode: network.code,
+      networkName: network.network_name || network.display_name || network.code,
+      tokenSymbol: network.token_symbol || payload.plan?.currency || "USDT",
+      plan: payload.plan,
+      qr_code_data_url: buildPreviewQrDataUrl(network.code || network.display_name || "wallet"),
+    })),
+  );
 
 const statusToneClasses = {
   neutral: "border-slate-200 bg-slate-50 text-slate-700",
@@ -170,13 +185,19 @@ const PaymentPage = () => {
   const [isLoadingCrypto, setIsLoadingCrypto] = useState(false);
   const [copiedNetwork, setCopiedNetwork] = useState("");
   const [selectedWalletNetwork, setSelectedWalletNetwork] = useState("");
+  const [availablePlans, setAvailablePlans] = useState([]);
+  const [cryptoPaymentRequest, setCryptoPaymentRequest] = useState(null);
+  const [cryptoRequestAttemptKey, setCryptoRequestAttemptKey] = useState("");
+  const [transactionHash, setTransactionHash] = useState("");
+  const [senderAddress, setSenderAddress] = useState("");
+  const [isSubmittingCrypto, setIsSubmittingCrypto] = useState(false);
   const [cryptoPaymentStatus, setCryptoPaymentStatus] = useState("waiting");
   const [quoteSeconds, setQuoteSeconds] = useState(15 * 60);
 
   const startStripeCheckout = async (planType) => {
     setActivePlan(planType);
     try {
-      const { data } = await api.post("/api/billing/stripe/checkout-session/", { plan_type: planType });
+      const { data } = await api.post("/api/v1/billing/stripe/checkout-session/", { plan_type: planType });
       window.location.href = data.checkout_url;
     } catch (e) {
       setStatus(getApiErrorMessage(e, "We couldn't start checkout right now. Please try again in a moment."));
@@ -184,16 +205,37 @@ const PaymentPage = () => {
     }
   };
 
+  const loadBillingPlans = async () => {
+    if (availablePlans.length) return availablePlans;
+
+    const { data } = await api.get("/api/v1/billing/plans/");
+    const nextPlans = data.items || [];
+    setAvailablePlans(nextPlans);
+    return nextPlans;
+  };
+
   const loadCrypto = async () => {
+    if (!selectedPlanMeta) return;
+
     setIsLoadingCrypto(true);
     try {
-      const { data } = await api.get("/api/billing/crypto/payment-info/");
-      setWallets(data.wallets || []);
+      const plans = await loadBillingPlans();
+      const plan = plans.find((item) => item.plan_type === selectedPlanMeta.id);
+
+      if (!plan) {
+        setWallets([]);
+        setStatus("This plan is not available for crypto payment yet.");
+        return;
+      }
+
+      const { data } = await api.get(`/api/v1/billing/crypto/plans/${plan.id}/wallets/`);
+      const nextWallets = normalizeCryptoWallets(data);
+      setWallets(nextWallets);
       setSelectedWalletNetwork((current) => {
-        if (current && data.wallets?.some((wallet) => wallet.network === current)) return current;
-        return data.wallets?.[0]?.network || "";
+        if (current && nextWallets.some((wallet) => wallet.key === current)) return current;
+        return nextWallets[0]?.key || "";
       });
-      if (!data.wallets?.length) setStatus("Live crypto details are not ready yet, so a preview address and QR are shown for the UI.");
+      if (!nextWallets.length) setStatus("Crypto wallets are not configured for this plan yet.");
     } catch (e) {
       setStatus(getApiErrorMessage(e, "We couldn't load crypto payment details right now. Please try again in a moment."));
     } finally {
@@ -219,34 +261,101 @@ const PaymentPage = () => {
     }
   };
 
-  const markCryptoPaymentSent = () => {
-    setCryptoPaymentStatus("detecting");
-    setStatus("Payment marked as sent. We are watching the selected network for the incoming transfer.");
+  const createCryptoPaymentRequest = async () => {
+    if (!selectedWallet?.plan || !selectedWallet) return null;
+    if (
+      cryptoPaymentRequest &&
+      cryptoPaymentRequest.plan === selectedWallet.plan.id &&
+      cryptoPaymentRequest.network === selectedWallet.networkId &&
+      cryptoPaymentRequest.wallet === selectedWallet.id
+    ) {
+      return cryptoPaymentRequest;
+    }
+
+    setIsSubmittingCrypto(true);
+    setCryptoRequestAttemptKey(selectedWallet.key);
+    try {
+      const { data } = await api.post("/api/v1/billing/crypto/payment-requests/", {
+        plan_id: selectedWallet.plan.id,
+        network_id: selectedWallet.networkId,
+        wallet_id: selectedWallet.id,
+      });
+      setCryptoPaymentRequest(data.payment_request || null);
+      setQuoteSeconds(24 * 60 * 60);
+      setCryptoPaymentStatus("waiting");
+      return data.payment_request || null;
+    } catch (e) {
+      setStatus(getApiErrorMessage(e, "We couldn't create a crypto payment request. Please try again."));
+      return null;
+    } finally {
+      setIsSubmittingCrypto(false);
+    }
+  };
+
+  const submitCryptoTransaction = async () => {
+    const trimmedHash = transactionHash.trim();
+    if (!trimmedHash) {
+      setStatus("Enter your transaction hash before submitting for review.");
+      return;
+    }
+
+    const paymentRequest = cryptoPaymentRequest || (await createCryptoPaymentRequest());
+    if (!paymentRequest) return;
+
+    setIsSubmittingCrypto(true);
+    try {
+      const { data } = await api.post(`/api/v1/billing/crypto/payment-requests/${paymentRequest.id}/submit-transaction/`, {
+        transaction_hash: trimmedHash,
+        sender_address: senderAddress.trim(),
+      });
+      setCryptoPaymentRequest(data.payment_request || paymentRequest);
+      setCryptoPaymentStatus("detecting");
+      setStatus("Transaction submitted for admin review.");
+    } catch (e) {
+      setStatus(getApiErrorMessage(e, "We couldn't submit that transaction yet. Please check the hash and try again."));
+    } finally {
+      setIsSubmittingCrypto(false);
+    }
   };
 
   const checkCryptoPaymentStatus = () => {
-    setCryptoPaymentStatus("detecting");
-    setStatus("Still waiting for network confirmation. Keep this page open while detection continues.");
+    if (!cryptoPaymentRequest?.id) {
+      setStatus("Create a payment request first, then submit your transaction hash.");
+      return;
+    }
+
+    api
+      .get(`/api/v1/billing/crypto/payment-requests/${cryptoPaymentRequest.id}/`)
+      .then(({ data }) => {
+        const nextRequest = data.payment_request || data;
+        setCryptoPaymentRequest(nextRequest);
+        setCryptoPaymentStatus(nextRequest.status === "approved" ? "confirmed" : nextRequest.status === "pending_review" ? "detecting" : "waiting");
+        setStatus(`Payment status: ${nextRequest.status.replace(/_/g, " ")}.`);
+      })
+      .catch((e) => {
+        setStatus(getApiErrorMessage(e, "We couldn't refresh payment status right now."));
+      });
   };
 
   const statusTone = status ? getStatusTone(status) : "neutral";
   const selectedPlanMeta = stripePlans.find((plan) => plan.id === selectedPlan);
   const selectedMethodMeta = paymentMethods.find((method) => method.id === selectedMethod);
-  const walletOptions = wallets.length ? wallets : cryptoPreviewWallets;
-  const isUsingPreviewWallets = !wallets.length;
-  const selectedWallet = walletOptions.find((wallet) => wallet.network === selectedWalletNetwork) || null;
+  const walletOptions = wallets;
+  const isUsingPreviewWallets = false;
+  const selectedWallet = walletOptions.find((wallet) => wallet.key === selectedWalletNetwork) || null;
   const selectedChargeLabel = selectedPlanMeta?.chargeLabel || "";
-  const cryptoAmount = selectedPlanMeta?.id === "yearly" ? "190" : "19";
+  const cryptoAmount = cryptoPaymentRequest?.expected_amount || selectedWallet?.plan?.price_usd || (selectedPlanMeta?.id === "yearly" ? "190" : "19");
+  const cryptoTokenSymbol = cryptoPaymentRequest?.token_symbol || selectedWallet?.tokenSymbol || "USDT";
   const cryptoStatusLabel =
     cryptoPaymentStatus === "confirmed"
       ? "Payment confirmed"
       : cryptoPaymentStatus === "detecting"
-        ? "Detecting transaction"
+        ? "Pending admin review"
         : "Waiting for payment";
   const canContinueToPayment = Boolean(selectedPlanMeta && selectedMethodMeta && (selectedMethod !== "crypto" || selectedWalletNetwork));
 
   useEffect(() => {
-    if (currentStep === 3 && selectedMethod === "crypto" && selectedPlan && !wallets.length && !isLoadingCrypto) {
+    if ((currentStep === 2 || currentStep === 3) && selectedMethod === "crypto" && selectedPlan && !wallets.length && !isLoadingCrypto) {
       loadCrypto();
     }
   }, [currentStep, isLoadingCrypto, selectedMethod, selectedPlan, wallets.length]);
@@ -254,7 +363,29 @@ const PaymentPage = () => {
   useEffect(() => {
     setQuoteSeconds(15 * 60);
     setCryptoPaymentStatus("waiting");
+    setCryptoPaymentRequest(null);
+    setCryptoRequestAttemptKey("");
+    setTransactionHash("");
+    setSenderAddress("");
   }, [selectedPlan, selectedWalletNetwork, selectedMethod]);
+
+  useEffect(() => {
+    setWallets([]);
+    setSelectedWalletNetwork("");
+  }, [selectedPlan]);
+
+  useEffect(() => {
+    if (
+      currentStep === 3 &&
+      selectedMethod === "crypto" &&
+      selectedWallet &&
+      !cryptoPaymentRequest &&
+      !isSubmittingCrypto &&
+      cryptoRequestAttemptKey !== selectedWalletNetwork
+    ) {
+      createCryptoPaymentRequest();
+    }
+  }, [currentStep, selectedMethod, selectedWalletNetwork, cryptoPaymentRequest, isSubmittingCrypto, cryptoRequestAttemptKey]);
 
   useEffect(() => {
     if (currentStep !== 3 || selectedMethod !== "crypto" || quoteSeconds <= 0) return undefined;
@@ -519,7 +650,7 @@ const PaymentPage = () => {
                 </p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {walletOptions.map((wallet) => {
-                    const isSelected = selectedWalletNetwork === wallet.network;
+                    const isSelected = selectedWalletNetwork === wallet.key;
 
                     return (
                       <button
@@ -528,8 +659,8 @@ const PaymentPage = () => {
                             ? "border-teal-500 bg-teal-50 shadow-[0_14px_30px_rgba(13,148,136,0.16)]"
                             : "border-slate-200 bg-white hover:border-teal-200 hover:bg-teal-50/50"
                         }`}
-                        key={wallet.network}
-                        onClick={() => setSelectedWalletNetwork(wallet.network)}
+                        key={wallet.key}
+                        onClick={() => setSelectedWalletNetwork(wallet.key)}
                         type="button"
                       >
                         <span className="block text-sm font-semibold text-slate-950">{wallet.network}</span>
@@ -548,12 +679,20 @@ const PaymentPage = () => {
                       />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-slate-950">Preview for {selectedWallet.network}</p>
+                      <p className="text-sm font-semibold text-slate-950">Payment address for {selectedWallet.network}</p>
                       <p className="mt-1 text-sm leading-6 text-slate-600">QR and address will be shown again on the payment step.</p>
                       <p className="mt-2 break-all text-xs font-medium text-slate-500">{maskWalletAddress(selectedWallet.address)}</p>
                     </div>
                   </div>
-                ) : null}
+                ) : isLoadingCrypto ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-500">
+                    Loading supported crypto networks...
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm font-semibold text-slate-500">
+                    No crypto wallets are configured for this plan.
+                  </div>
+                )}
               </div>
             ) : null}
             <div className="mt-5 rounded-xl border border-teal-100 bg-teal-50/60 px-4 py-3">
@@ -659,12 +798,12 @@ const PaymentPage = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-300">Crypto payment</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-[1.75rem]">Follow these payment details exactly</h2>
               <p className="mt-2 max-w-full text-sm leading-6 text-slate-300">
-                Send the exact USDT amount on the selected network. We will detect the transaction automatically.
+                Send the exact amount on the selected network, then submit your transaction hash for admin review.
               </p>
               <div className="mt-4 grid gap-3 lg:grid-cols-4">
                 <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Send exactly</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">{cryptoAmount} USDT</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">{cryptoAmount} {cryptoTokenSymbol}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Network</p>
@@ -698,7 +837,7 @@ const PaymentPage = () => {
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-white">
                       {isLoadingCrypto ? <SpinnerIcon /> : null}
-                      <span>{isLoadingCrypto ? "Generating your payment address..." : isUsingPreviewWallets ? "Preview payment details" : "Live payment details"}</span>
+                      <span>{isLoadingCrypto || isSubmittingCrypto ? "Generating your payment request..." : isUsingPreviewWallets ? "Preview payment details" : "Live payment details"}</span>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${cryptoPaymentStatus === "detecting" ? "bg-amber-400/15 text-amber-100" : "bg-teal-400/15 text-teal-100"}`}>
                       {cryptoStatusLabel}
@@ -707,7 +846,7 @@ const PaymentPage = () => {
 
                   <div className="flex flex-wrap gap-2">
                     {walletOptions.map((wallet) => {
-                      const isSelected = wallet.network === selectedWallet.network;
+                      const isSelected = wallet.key === selectedWallet.key;
 
                       return (
                         <button
@@ -716,8 +855,8 @@ const PaymentPage = () => {
                               ? "border-teal-300 bg-teal-400/20 text-teal-50 shadow-[0_12px_24px_rgba(20,184,166,0.16)]"
                               : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10"
                           }`}
-                          key={wallet.network}
-                          onClick={() => setSelectedWalletNetwork(wallet.network)}
+                          key={wallet.key}
+                          onClick={() => setSelectedWalletNetwork(wallet.key)}
                           type="button"
                         >
                           <span className="block">{wallet.network}</span>
@@ -728,7 +867,7 @@ const PaymentPage = () => {
                   </div>
 
                   <div className="rounded-xl border border-red-300/40 bg-red-500/15 px-4 py-3 text-red-50">
-                    <p className="text-sm font-bold">⚠ Send only USDT on {selectedWallet.network} network.</p>
+                    <p className="text-sm font-bold">⚠ Send only {cryptoTokenSymbol} on {selectedWallet.network} network.</p>
                     <p className="mt-1 text-sm leading-6">Sending other assets or using another network will result in permanent loss.</p>
                   </div>
 
@@ -740,7 +879,7 @@ const PaymentPage = () => {
                             <div>
                               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Wallet address</p>
                               <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{maskWalletAddress(selectedWallet.address)}</p>
-                              <p className="mt-1 text-xs text-slate-400">{selectedWallet.network} | {networkDescriptions[selectedWallet.network]}</p>
+                              <p className="mt-1 text-xs text-slate-400">{selectedWallet.network} | {networkDescriptions[selectedWallet.network] || selectedWallet.networkName}</p>
                             </div>
                             <button
                               className="rb-btn-primary h-12 min-w-40 gap-2"
@@ -757,7 +896,7 @@ const PaymentPage = () => {
                         <div className="grid gap-3 sm:grid-cols-3">
                           {[
                             { label: "Waiting for payment", active: cryptoPaymentStatus === "waiting" },
-                            { label: "Detecting transaction", active: cryptoPaymentStatus === "detecting" },
+                            { label: "Pending admin review", active: cryptoPaymentStatus === "detecting" },
                             { label: "Payment confirmed ✓", active: cryptoPaymentStatus === "confirmed" },
                           ].map((item) => (
                             <div
@@ -772,13 +911,28 @@ const PaymentPage = () => {
                         </div>
 
                         <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                          <p className="text-sm font-semibold text-white">After payment</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-300">Resume Builder unlocks instantly after transaction confirmation.</p>
+                          <p className="text-sm font-semibold text-white">Payment reference</p>
+                          <p className="mt-1 break-all text-sm leading-6 text-slate-300">{cryptoPaymentRequest?.reference_code || "Creating reference..."}</p>
+                        </div>
+
+                        <div className="grid gap-3">
+                          <input
+                            className="rb-field border-white/10 bg-white/95 text-slate-900"
+                            onChange={(event) => setTransactionHash(event.target.value)}
+                            placeholder="Transaction hash"
+                            value={transactionHash}
+                          />
+                          <input
+                            className="rb-field border-white/10 bg-white/95 text-slate-900"
+                            onChange={(event) => setSenderAddress(event.target.value)}
+                            placeholder="Sender address optional"
+                            value={senderAddress}
+                          />
                         </div>
 
                         <div className="flex flex-col gap-3 sm:flex-row">
-                          <button className="rb-btn-primary h-11 justify-center" onClick={markCryptoPaymentSent} type="button">
-                            I've sent payment
+                          <button className="rb-btn-primary h-11 justify-center" disabled={isSubmittingCrypto} onClick={submitCryptoTransaction} type="button">
+                            {isSubmittingCrypto ? "Submitting..." : "Submit transaction"}
                           </button>
                           <button className="rb-btn-secondary-dark h-11 justify-center" onClick={checkCryptoPaymentStatus} type="button">
                             Check payment status
@@ -793,7 +947,7 @@ const PaymentPage = () => {
                           src={selectedWallet.qr_code_data_url}
                         />
                         <p className="mt-3 text-center text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Scan with your wallet app</p>
-                        <p className="mt-2 text-center text-sm font-semibold text-slate-900">{cryptoAmount} USDT</p>
+                        <p className="mt-2 text-center text-sm font-semibold text-slate-900">{cryptoAmount} {cryptoTokenSymbol}</p>
                         <p className="mt-1 text-center text-xs text-slate-500">{maskWalletAddress(selectedWallet.address)}</p>
                       </div>
                     </div>

@@ -8,17 +8,18 @@ const AdminPage = () => {
   const [replyById, setReplyById] = useState({});
 
   useEffect(() => {
-    api.get("/api/admin/users/").then((res) => setUsers(res.data)).catch(() => setUsers([]));
-    api.get("/api/admin/contact-messages/").then((res) => setMessages(res.data)).catch(() => setMessages([]));
+    api.get("/api/v1/admin/users/").then((res) => setUsers(res.data.items || [])).catch(() => setUsers([]));
+    api.get("/api/v1/admin/support/conversations/").then((res) => setMessages(res.data.items || [])).catch(() => setMessages([]));
   }, []);
 
   const reply = async (id) => {
-    const admin_reply = replyById[id]?.trim();
-    if (!admin_reply) return;
+    const message = replyById[id]?.trim();
+    if (!message) return;
 
-    await api.patch(`/api/admin/contact-messages/${id}/`, { admin_reply, is_resolved: true });
-    const { data } = await api.get("/api/admin/contact-messages/");
-    setMessages(data);
+    await api.post(`/api/v1/admin/support/conversations/${id}/messages/`, { message });
+    await api.patch(`/api/v1/admin/support/conversations/${id}/`, { status: "closed" });
+    const { data } = await api.get("/api/v1/admin/support/conversations/");
+    setMessages(data.items || []);
   };
 
   return (
@@ -44,20 +45,25 @@ const AdminPage = () => {
         <div className="rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
           <h2 className="text-xl font-semibold text-slate-900">Support messages</h2>
           <div className="mt-5 space-y-4">
-            {messages.map((m) => (
+            {messages.map((m) => {
+              const user = { id: m.user, email: m.user_email };
+              const isResolved = m.status === "closed";
+
+              return (
               <div className="rounded-[1.5rem] border border-slate-200 p-5" key={m.id}>
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-900">{getUserDisplayName(m)}</p>
+                  <p className="text-sm font-semibold text-slate-900">{getUserDisplayName(user)}</p>
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      m.admin_reply ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                      isResolved ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
                     }`}
                   >
-                    {m.admin_reply ? "Resolved" : "Pending"}
+                    {isResolved ? "Resolved" : "Pending"}
                   </span>
                 </div>
-                <p className="mt-4 text-sm leading-7 text-slate-600">{m.message}</p>
-                <p className="mt-4 text-sm text-slate-500">Reply: {m.admin_reply || "Pending"}</p>
+                <p className="mt-2 text-sm text-slate-500">{getUserSecondaryText(user) || `Conversation #${m.id}`}</p>
+                <p className="mt-4 text-sm leading-7 text-slate-600">{m.last_message_preview || m.subject || "No message preview yet."}</p>
+                <p className="mt-4 text-sm text-slate-500">Status: {m.status}</p>
                 <input
                   className="rb-field mt-4"
                   placeholder="Write reply..."
@@ -67,7 +73,8 @@ const AdminPage = () => {
                   Send Reply & Resolve
                 </button>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       </section>
