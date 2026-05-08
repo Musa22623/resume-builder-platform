@@ -30,7 +30,7 @@ const HomePage = () => {
             </div>
             <div className="rounded-3xl border border-white/80 bg-white/80 p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
               <p className="text-sm font-semibold text-slate-900">Shared workflow</p>
-              <p className="mt-2 text-sm text-slate-500">Move between web and desktop with one account and one backend.</p>
+              <p className="mt-2 text-sm text-slate-500">Move between web and desktop with one account and shared progress.</p>
             </div>
             <div className="rounded-3xl border border-white/80 bg-white/80 p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
               <p className="text-sm font-semibold text-slate-900">Flexible billing</p>
@@ -84,11 +84,10 @@ const HomePage = () => {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">How it works</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">A focused workflow from raw input to reviewable output.</h2>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">A clear workflow from source details to a polished draft.</h2>
             </div>
             <p className="max-w-xl text-sm leading-7 text-slate-500">
-              The MVP is intentionally narrow: capture resume details, capture the target role, generate approved sections,
-              and make billing and support status obvious.
+              Start with your resume, add the role you want, review suggested wording, and keep billing and support easy to find.
             </p>
           </div>
           <div className="mt-8 grid gap-4 lg:grid-cols-3">
@@ -123,14 +122,14 @@ const HomePage = () => {
               <div className="rounded-3xl bg-slate-50 p-5">
                 <p className="text-sm font-semibold text-slate-900">Shared web and desktop workflow</p>
                 <p className="mt-2 text-sm leading-7 text-slate-500">
-                  One backend powers sign-in, resume data, job targeting, billing visibility, and support access across clients.
+                  Your account, resume details, job targets, billing status, and support stay in sync across web and desktop.
                 </p>
               </div>
             </div>
           </div>
 
           <div className="rounded-[2rem] border border-white/80 bg-white/85 p-8 shadow-[0_16px_50px_rgba(15,23,42,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">What you get in the MVP</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">What you can do today</p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <div className="rounded-3xl border border-slate-200 p-5">
                 <p className="text-sm font-semibold text-slate-900">Authentication</p>
@@ -191,7 +190,7 @@ const HomePage = () => {
           <div className="mt-6 space-y-4 text-sm leading-7 text-slate-600">
             <p>Email: support@resume-builder.local</p>
             <p>Logged-in users can open the in-app support chat widget for direct admin responses.</p>
-            <p>Partnership, sales, and ops questions can start through the same support channel.</p>
+            <p>Partnership, sales, and account questions can start through the same support channel.</p>
           </div>
           <div className="mt-8 rounded-3xl bg-slate-50 p-5">
             <p className="text-sm font-semibold text-slate-900">What users should expect</p>
@@ -222,7 +221,7 @@ const HomePage = () => {
             <div className="rounded-3xl border border-slate-200 p-5">
               <h3 className="text-base font-semibold text-slate-900">Can I use web and desktop together?</h3>
               <p className="mt-3 text-sm leading-7 text-slate-500">
-                Yes. Desktop and web use the same backend account and the same shared data.
+                Yes. Desktop and web use the same account and the same shared data.
               </p>
             </div>
           </div>

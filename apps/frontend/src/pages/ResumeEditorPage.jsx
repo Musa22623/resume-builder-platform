@@ -210,6 +210,63 @@ const FieldHint = ({ message, tone = "neutral" }) => {
   return <p className={`mt-2 text-xs leading-5 ${tones[tone] || tones.neutral}`}>{message}</p>;
 };
 
+const sectionStatusStyles = {
+  complete: "border-teal-200 bg-teal-50 text-teal-700",
+  "needs-work": "border-amber-200 bg-amber-50 text-amber-700",
+  optional: "border-slate-200 bg-slate-50 text-slate-500",
+};
+
+const SectionStatusBadge = ({ status }) => (
+  <span
+    className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+      sectionStatusStyles[status.tone] || sectionStatusStyles.optional
+    }`}
+  >
+    {status.badge}
+  </span>
+);
+
+const RecommendedFlowPanel = ({ items, nextItem }) => (
+  <aside className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_10px_22px_rgba(15,23,42,0.05)] xl:sticky xl:top-4">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">Recommended flow</p>
+        <h2 className="mt-1 text-sm font-semibold tracking-tight text-slate-950">Build in this order</h2>
+      </div>
+      <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">Guide</span>
+    </div>
+
+    <div className="mt-3 grid gap-1.5">
+      {items.map((item, index) => (
+        <a
+          className="group flex items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 transition hover:border-teal-100 hover:bg-teal-50/60"
+          href={`#${item.id}`}
+          key={item.id}
+        >
+          <span
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+              item.tone === "complete" ? "bg-teal-600 text-white" : item.tone === "needs-work" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {item.tone === "complete" ? "✓" : index + 1}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">{item.label}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${sectionStatusStyles[item.tone] || sectionStatusStyles.optional}`}>
+            {item.badge}
+          </span>
+        </a>
+      ))}
+    </div>
+
+    {nextItem ? (
+      <div className="mt-3 rounded-lg border border-teal-100 bg-teal-50/80 px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-700">Next</p>
+        <p className="mt-0.5 text-xs leading-5 text-slate-700">{nextItem.feedback}</p>
+      </div>
+    ) : null}
+  </aside>
+);
+
 const SectionToggleButton = ({ isOpen, label, onClick }) => (
   <button
     aria-expanded={isOpen}
@@ -630,24 +687,98 @@ const ResumeEditorPage = () => {
     return pages;
   }, [pageTwoExperience, previewEducation]);
 
+  const contactDetails = payload.content_json.contact_details;
+  const emailValue = contactDetails.email.trim();
+  const websiteValue = contactDetails.website.trim();
+  const linkedinValue = contactDetails.linkedin.trim();
+  const contactWarnings = {
+    email: emailValue && !isLikelyEmail(emailValue),
+    website: websiteValue && !isLikelyLink(websiteValue),
+    linkedin: linkedinValue && !isLikelyLink(linkedinValue),
+  };
   const experienceCount = payload.content_json.experience.filter((item) => item.role || item.company).length;
   const educationCount = payload.content_json.education.filter((item) => item.school || item.degree).length;
+  const firstExperience = payload.content_json.experience[0] || createExperienceItem();
+  const firstExperienceBullets = firstExperience.highlights.split("\n").filter((item) => item.trim()).length;
   const hasResumeTitle = Boolean(payload.title.trim());
-  const hasProfile = Boolean(payload.content_json.name.trim() && payload.content_json.headline.trim());
-  const hasContact = previewContactItems.length >= 2;
-  const hasSummary = payload.content_json.summary.trim().length >= 40;
-  const hasSkills = previewSkills.length > 0;
-  const hasExperience = experienceCount > 0;
+  const hasProfile = Boolean(payload.content_json.name.trim() && payload.content_json.headline.trim() && hasResumeTitle);
+  const hasContact = Boolean(emailValue && isLikelyEmail(emailValue) && (payload.content_json.contact_details.phone || payload.content_json.contact_details.location));
+  const hasSummary = payload.content_json.summary.trim().length >= 80;
+  const hasSkills = previewSkills.length >= 6;
+  const hasExperience = Boolean(firstExperience.role && firstExperience.company && firstExperienceBullets >= 2);
   const hasEducation = educationCount > 0;
-  const completionSteps = [hasResumeTitle, hasProfile, hasContact, hasSummary, hasSkills, hasExperience, hasEducation];
-  const completedSections = completionSteps.filter(Boolean).length;
-  const completionPercent = Math.round((completedSections / completionSteps.length) * 100);
+  const sectionStatuses = {
+    profile: hasProfile
+      ? { badge: "Complete", tone: "complete" }
+      : { badge: "Needs basics", tone: "needs-work" },
+    contact: hasContact
+      ? { badge: "Complete", tone: "complete" }
+      : { badge: emailValue ? "Add detail" : "Needs email", tone: "needs-work" },
+    summary: hasSummary
+      ? { badge: "Complete", tone: "complete" }
+      : { badge: payload.content_json.summary.trim() ? "Make stronger" : "Needs summary", tone: "needs-work" },
+    skills: hasSkills
+      ? { badge: "Complete", tone: "complete" }
+      : { badge: previewSkills.length ? "Add more" : "Needs skills", tone: "needs-work" },
+    experience: hasExperience
+      ? { badge: "Complete", tone: "complete" }
+      : { badge: experienceCount ? "Add impact" : "Needs role", tone: "needs-work" },
+    education: hasEducation
+      ? { badge: "Complete", tone: "complete" }
+      : { badge: "Optional", tone: "optional" },
+  };
+  const guideItems = [
+    {
+      id: "profile-section",
+      label: "Profile",
+      note: "Title, name, and headline.",
+      feedback: "Add a resume title, full name, and a role-focused headline.",
+      ...sectionStatuses.profile,
+    },
+    {
+      id: "contact-section",
+      label: "Contact",
+      note: "Email plus phone or location.",
+      feedback: "Use a valid email and add one more contact detail.",
+      ...sectionStatuses.contact,
+    },
+    {
+      id: "summary-section",
+      label: "Summary",
+      note: "A focused 2-3 line opener.",
+      feedback: "Write 2-3 lines about role focus, strengths, and impact.",
+      ...sectionStatuses.summary,
+    },
+    {
+      id: "skills-section",
+      label: "Skills",
+      note: "Aim for 6-10 relevant keywords.",
+      feedback: "Add a few more role-relevant skills so the keyword line feels complete.",
+      ...sectionStatuses.skills,
+    },
+    {
+      id: "experience-section",
+      label: "Experience",
+      note: "Role, company, and impact bullets.",
+      feedback: "Add the first role with company and at least two achievement bullets.",
+      ...sectionStatuses.experience,
+    },
+    {
+      id: "education-section",
+      label: "Education",
+      note: "Optional unless it strengthens this resume.",
+      feedback: "Add education if it helps the target role or leave it optional.",
+      ...sectionStatuses.education,
+    },
+  ];
+  const requiredGuideItems = guideItems.filter((item) => item.tone !== "optional");
+  const completedSections = requiredGuideItems.filter((item) => item.tone === "complete").length;
+  const completionPercent = Math.round((completedSections / requiredGuideItems.length) * 100);
+  const nextGuideItem = guideItems.find((item) => item.tone === "needs-work") || null;
   const progressLabel =
     completionPercent === 100
-      ? "Ready for the next step"
-      : completionPercent >= 70
-        ? `${completedSections} of ${completionSteps.length} core blocks are in place`
-        : `Build out the essentials (${completedSections}/${completionSteps.length})`;
+      ? "Core resume sections are complete"
+      : `${completedSections} of ${requiredGuideItems.length} core sections complete`;
 
   const updateContentField = (field, value) => {
     setValidationErrors((current) => ({ ...current, [field]: "", body: "" }));
@@ -737,14 +868,6 @@ const ResumeEditorPage = () => {
 
   const currentSnapshot = JSON.stringify(payload);
   const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshot;
-  const emailValue = payload.content_json.contact_details.email.trim();
-  const websiteValue = payload.content_json.contact_details.website.trim();
-  const linkedinValue = payload.content_json.contact_details.linkedin.trim();
-  const contactWarnings = {
-    email: emailValue && !isLikelyEmail(emailValue),
-    website: websiteValue && !isLikelyLink(websiteValue),
-    linkedin: linkedinValue && !isLikelyLink(linkedinValue),
-  };
   const toggleSection = (section) => {
     setSectionVisibility((current) => ({
       ...current,
@@ -754,7 +877,20 @@ const ResumeEditorPage = () => {
 
   return (
     <div className="space-y-6">
-      <PageTitleBar title="Resume Editor" />
+      <PageTitleBar
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700">
+              {completionPercent}% ready
+            </span>
+            <span className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${hasUnsavedChanges ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+              {hasUnsavedChanges ? "Unsaved changes" : "Saved"}
+            </span>
+          </div>
+        }
+        subtitle="Edit structured resume details on the left and review the printable document preview on the right."
+        title="Resume Editor"
+      />
       {loadStatus ? (
         <p className={`rounded-2xl px-4 py-3 text-sm font-medium ${isLoadingDraft ? "bg-slate-100 text-slate-600" : "bg-teal-50 text-teal-800"}`}>
           {loadStatus}
@@ -824,51 +960,48 @@ const ResumeEditorPage = () => {
       </Panel>
 
       <section className="space-y-6">
-        <div className="rounded-[1.7rem] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(240,253,250,0.8))] p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-teal-700">Build progress</p>
-                  <p className="mt-1 text-base font-semibold tracking-tight text-slate-900">{progressLabel}</p>
-                </div>
-                <p className="text-xl font-semibold tracking-tight text-slate-900">{completionPercent}%</p>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0f766e_55%,#14b8a6_100%)] transition-all duration-300"
-                  style={{ width: `${completionPercent}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 xl:justify-end">
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasProfile ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
-                Profile
-              </span>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasSkills ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
-                Skills
-              </span>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasExperience ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
-                Work history
-              </span>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasEducation ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>
-                Education
-              </span>
-            </div>
+        <details className="group rounded-lg border border-slate-200 bg-white px-4 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-800">
+            <span className="min-w-0 truncate">
+              Recommended flow
+              {nextGuideItem ? <span className="ml-2 font-medium text-slate-500">Next: {nextGuideItem.label}</span> : null}
+            </span>
+            <span className="text-xs font-semibold text-teal-700 group-open:hidden">Show</span>
+            <span className="hidden text-xs font-semibold text-slate-500 group-open:inline">Hide</span>
+          </summary>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {guideItems.map((item, index) => (
+              <a
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm transition hover:border-teal-200 hover:bg-teal-50"
+                href={`#${item.id}`}
+                key={item.id}
+              >
+                <span
+                  className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                    item.tone === "complete" ? "bg-teal-600 text-white" : item.tone === "needs-work" ? "bg-amber-100 text-amber-700" : "bg-slate-200 text-slate-500"
+                  }`}
+                >
+                  {item.tone === "complete" ? "✓" : index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-semibold text-slate-800">{item.label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${sectionStatusStyles[item.tone] || sectionStatusStyles.optional}`}>
+                  {item.badge}
+                </span>
+              </a>
+            ))}
           </div>
-        </div>
+        </details>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(460px,1.08fr)] 2xl:grid-cols-[minmax(0,0.86fr)_minmax(560px,1.14fr)]">
           <div className="space-y-6">
-            <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <section id="profile-section" className="scroll-mt-4 rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Profile</p>
                   <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Resume identity</h2>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Top section</span>
+                  <SectionStatusBadge status={sectionStatuses.profile} />
                   <SectionToggleButton isOpen={sectionVisibility.profile} label="profile" onClick={() => toggleSection("profile")} />
                 </div>
               </div>
@@ -910,19 +1043,28 @@ const ResumeEditorPage = () => {
                     value={payload.content_json.headline}
                   />
                   </div>
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Guide</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      {hasProfile ? "Profile is ready for the top of the resume." : "Complete title, name, and headline so the preview opens with a clear identity."}
+                    </p>
+                  </div>
                 </>
               ) : (
                 <p className="mt-5 text-sm leading-7 text-slate-500">Keep your title, name, and headline together so the top of the resume stays crisp.</p>
               )}
             </section>
 
-            <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <section id="contact-section" className="scroll-mt-4 rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Contact</p>
                   <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Personal details</h2>
                 </div>
-                <SectionToggleButton isOpen={sectionVisibility.contact} label="contact details" onClick={() => toggleSection("contact")} />
+                <div className="flex items-center gap-3">
+                  <SectionStatusBadge status={sectionStatuses.contact} />
+                  <SectionToggleButton isOpen={sectionVisibility.contact} label="contact details" onClick={() => toggleSection("contact")} />
+                </div>
               </div>
 
               {sectionVisibility.contact ? (
@@ -990,13 +1132,19 @@ const ResumeEditorPage = () => {
                       <FieldHint message="Use your public LinkedIn URL or profile path." tone="warning" />
                     ) : null}
                   </div>
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Guide</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      {hasContact ? "Contact details are clear enough for recruiter follow-up." : "Use a valid email and add phone or location for a complete contact block."}
+                    </p>
+                  </div>
                 </>
               ) : (
                 <p className="mt-5 text-sm leading-7 text-slate-500">Keep the essentials here so someone can contact you without scanning the whole page.</p>
               )}
             </section>
 
-            <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <section id="summary-section" className="scroll-mt-4 rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Summary</p>
@@ -1005,7 +1153,10 @@ const ResumeEditorPage = () => {
                     Keep this as the short narrative recruiters should understand before they read your experience.
                   </p>
                 </div>
-                <SectionToggleButton isOpen={sectionVisibility.summary} label="summary" onClick={() => toggleSection("summary")} />
+                <div className="flex items-center gap-3">
+                  <SectionStatusBadge status={sectionStatuses.summary} />
+                  <SectionToggleButton isOpen={sectionVisibility.summary} label="summary" onClick={() => toggleSection("summary")} />
+                </div>
               </div>
 
               {sectionVisibility.summary ? (
@@ -1018,16 +1169,28 @@ const ResumeEditorPage = () => {
               ) : (
                 <p className="mt-5 text-sm leading-7 text-slate-500">A strong summary quickly frames who you are and what kind of role this resume is for.</p>
               )}
+              {sectionVisibility.summary ? (
+                <FieldHint
+                  message={
+                    hasSummary
+                      ? "Summary has enough substance for the resume preview."
+                      : `${Math.max(0, 80 - payload.content_json.summary.trim().length)} more characters gives this section better recruiter context.`
+                  }
+                />
+              ) : null}
               {sectionVisibility.summary && validationErrors.body ? <FieldHint message={validationErrors.body} tone="error" /> : null}
             </section>
 
-            <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <section id="skills-section" className="scroll-mt-4 rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Skills</p>
                   <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Keywords and strengths</h2>
                 </div>
-                <SectionToggleButton isOpen={sectionVisibility.skills} label="skills" onClick={() => toggleSection("skills")} />
+                <div className="flex items-center gap-3">
+                  <SectionStatusBadge status={sectionStatuses.skills} />
+                  <SectionToggleButton isOpen={sectionVisibility.skills} label="skills" onClick={() => toggleSection("skills")} />
+                </div>
               </div>
 
               {sectionVisibility.skills ? (
@@ -1038,7 +1201,9 @@ const ResumeEditorPage = () => {
                     placeholder={"Product strategy\nStakeholder management\nSQL\nRoadmap planning"}
                     value={payload.content_json.skills.join("\n")}
                   />
-                  <p className="mt-2 text-sm text-slate-500">Use one skill per line, or separate items with commas. They will appear as grouped keywords in the preview.</p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    {hasSkills ? "Good keyword density. Keep the list relevant to the target role." : `${previewSkills.length}/6 recommended skills added. Use one skill per line or separate items with commas.`}
+                  </p>
                   {validationErrors.body ? <FieldHint message={validationErrors.body} tone="error" /> : null}
                 </>
               ) : (
@@ -1046,7 +1211,7 @@ const ResumeEditorPage = () => {
               )}
             </section>
 
-            <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <section id="experience-section" className="scroll-mt-4 rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Experience</p>
@@ -1056,6 +1221,7 @@ const ResumeEditorPage = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  <SectionStatusBadge status={sectionStatuses.experience} />
                   <AddActionButton label="Add role" onClick={() => addCollectionItem("experience", createExperienceItem)} />
                   <SectionToggleButton isOpen={sectionVisibility.experience} label="work history" onClick={() => toggleSection("experience")} />
                 </div>
@@ -1146,7 +1312,9 @@ const ResumeEditorPage = () => {
                         placeholder="Write one achievement per line. Focus on ownership, scope, measurable results, and tools when relevant."
                         value={item.highlights}
                       />
-                      <p className="mt-3 text-sm text-slate-500">Tip: one line per bullet gives the preview a cleaner PDF-style resume layout.</p>
+                      <p className="mt-3 text-sm text-slate-500">
+                        Tip: one line per bullet gives the preview a cleaner PDF-style resume layout. Aim for at least two impact bullets in the first role.
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -1155,13 +1323,14 @@ const ResumeEditorPage = () => {
               )}
             </section>
 
-            <section className="rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <section id="education-section" className="scroll-mt-4 rounded-[2rem] border border-white/80 bg-white/90 p-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Education</p>
                   <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Academic background</h2>
                 </div>
                 <div className="flex items-center gap-3">
+                  <SectionStatusBadge status={sectionStatuses.education} />
                   <AddActionButton label="Add school" onClick={() => addCollectionItem("education", createEducationItem)} />
                   <SectionToggleButton isOpen={sectionVisibility.education} label="education" onClick={() => toggleSection("education")} />
                 </div>

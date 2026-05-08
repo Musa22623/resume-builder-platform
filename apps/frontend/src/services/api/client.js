@@ -13,6 +13,11 @@ const clearStoredTokens = () => {
   localStorage.removeItem("refresh_token");
 };
 
+const shouldAttachAccessToken = (url = "") => {
+  if (!url.includes("/api/v1/auth/")) return true;
+  return url.includes("/api/v1/auth/me/");
+};
+
 const refreshAccessToken = async () => {
   const refreshToken = localStorage.getItem("refresh_token");
 
@@ -26,12 +31,16 @@ const refreshAccessToken = async () => {
       .then((response) => {
         const payload = response.data?.data || response.data;
         const accessToken = payload?.access_token;
+        const refreshToken = payload?.refresh_token;
 
         if (!accessToken) {
           throw new Error("Refresh response did not include an access token");
         }
 
         localStorage.setItem("access_token", accessToken);
+        if (refreshToken) {
+          localStorage.setItem("refresh_token", refreshToken);
+        }
         return accessToken;
       })
       .finally(() => {
@@ -44,7 +53,11 @@ const refreshAccessToken = async () => {
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && shouldAttachAccessToken(config.url || "")) {
+    config.headers.Authorization = `Bearer ${token}`;
+  } else if (config.headers?.Authorization) {
+    delete config.headers.Authorization;
+  }
   return config;
 });
 
