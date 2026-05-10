@@ -121,7 +121,7 @@ DATABASES = {
         "PASSWORD": get_env("POSTGRES_PASSWORD", required=True),
         "HOST": get_env("POSTGRES_HOST", "127.0.0.1"),
         "PORT": get_env("POSTGRES_PORT", "5433"),
-        # "OPTIONS": {"sslmode": "require"},
+        "OPTIONS": {"sslmode": "require"},
     }
 }
 
@@ -149,6 +149,7 @@ SIMPLE_JWT = {
 CORS_ALLOW_ALL_ORIGINS = True
 
 FRONTEND_URL = "http://localhost:5173"
+GOOGLE_OAUTH_WEB_CLIENT_ID = get_env("GOOGLE_OAUTH_WEB_CLIENT_ID", "")
 
 # EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
