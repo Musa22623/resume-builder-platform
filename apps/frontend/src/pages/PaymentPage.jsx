@@ -4,34 +4,65 @@ import Panel from "../components/ui/Panel";
 import PageTitleBar from "../components/ui/PageTitleBar";
 import { getApiErrorMessage } from "../lib/apiError";
 
-const stripePlans = [
-  {
-    id: "monthly",
+const planTemplates = {
+  monthly: {
     label: "Monthly",
-    title: "Monthly access",
-    price: "$19",
     cadence: "/ month",
-    chargeLabel: "$19/month",
     summary: "Best if you want full access now and prefer a smaller recurring payment.",
     accent: "Most flexible",
     audience: "Good for a short job search or one focused resume refresh.",
     perks: ["Secure payment via Stripe", "No hidden fees", "Cancel anytime"],
   },
-  {
-    id: "yearly",
+  yearly: {
     label: "Yearly",
-    title: "Yearly access",
-    price: "$190",
     cadence: "/ year",
-    chargeLabel: "$190/year",
-    savings: "Save $38",
     summary: "Best value for longer search cycles, repeat tailoring, and ongoing resume refreshes.",
     accent: "Most popular",
     audience: "Best for ongoing applications, multiple target roles, and resume updates.",
     perks: ["Secure payment via Stripe", "Instant access after payment", "Cancel anytime"],
     recommended: true,
   },
-];
+  one_time: {
+    label: "One-time",
+    cadence: " one-time",
+    summary: "Best if you want a single purchase without recurring billing.",
+    accent: "Single payment",
+    audience: "Good for a focused resume refresh without a subscription.",
+    perks: ["Secure payment via Stripe", "No recurring charge", "Instant access after payment"],
+  },
+};
+
+const currencySymbol = (currency = "USD") => (currency.toUpperCase() === "USD" ? "$" : `${currency.toUpperCase()} `);
+
+const formatPlanPrice = (plan) => {
+  const amount = Number(plan.price_usd);
+  if (Number.isNaN(amount)) return `${currencySymbol(plan.currency)}0`;
+  return `${currencySymbol(plan.currency)}${amount.toFixed(2).replace(/\.00$/, "")}`;
+};
+
+const getPlanCadence = (plan) => {
+  if (plan.billing_interval === "month" || plan.plan_type === "monthly") return "/ month";
+  if (plan.billing_interval === "year" || plan.plan_type === "yearly") return "/ year";
+  return " one-time";
+};
+
+const buildBillingPlanMeta = (plan) => {
+  const template = planTemplates[plan.plan_type] || planTemplates.one_time;
+  const price = formatPlanPrice(plan);
+  const cadence = getPlanCadence(plan);
+
+  return {
+    ...template,
+    id: String(plan.id),
+    planType: plan.plan_type,
+    backendPlan: plan,
+    label: template.label || plan.plan_type,
+    title: plan.name || `${template.label} access`,
+    price,
+    cadence,
+    chargeLabel: `${price}${cadence}`,
+  };
+};
 
 const paymentMethods = [
   {
@@ -56,19 +87,9 @@ const wizardSteps = [
   { id: 3, label: "Pay", title: "Open the payment window" },
 ];
 
-const cryptoChecklist = [
-  "Choose the supported network that matches your wallet before sending funds.",
-  "Copy the wallet address directly from the page to avoid formatting errors.",
-  "Use the QR code for a faster mobile-wallet handoff when that is easier.",
-];
-
 const trustItems = ["Secure payment via Stripe", "No hidden fees", "Cancel anytime", "Instant access after payment"];
-const cryptoTrustItems = ["Secure wallet system", "Transaction hash review", "Reference code tracking"];
-const networkDescriptions = {
-  "USDT (ERC-20)": "Ethereum network",
-  "USDT (TRC-20)": "Tron network - lower fees",
-};
 
+// The backend owns wallet formatting, including QR payloads; the UI only shapes it for selection and display.
 const normalizeCryptoWallets = (payload) =>
   (payload.networks || []).flatMap((network) =>
     (network.wallets || []).map((wallet) => ({
@@ -78,9 +99,11 @@ const normalizeCryptoWallets = (payload) =>
       network: network.display_name || network.code,
       networkCode: network.code,
       networkName: network.network_name || network.display_name || network.code,
+      label: wallet.label || `${network.display_name || network.code} wallet`,
       tokenSymbol: network.token_symbol || payload.plan?.currency || "USDT",
       plan: payload.plan,
-      qr_code_data_url: buildPreviewQrDataUrl(network.code || network.display_name || "wallet"),
+      qrPayload: wallet.qr_payload || wallet.address,
+      qrCodeDataUrl: wallet.qr_code_data_url || "",
     })),
   );
 
@@ -132,49 +155,6 @@ const SpinnerIcon = () => (
   </svg>
 );
 
-const buildPreviewQrDataUrl = (network) => {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
-      <rect width="160" height="160" rx="20" fill="#ffffff"/>
-      <rect x="18" y="18" width="36" height="36" rx="6" fill="#111827"/>
-      <rect x="106" y="18" width="36" height="36" rx="6" fill="#111827"/>
-      <rect x="18" y="106" width="36" height="36" rx="6" fill="#111827"/>
-      <rect x="28" y="28" width="16" height="16" rx="2" fill="#ffffff"/>
-      <rect x="116" y="28" width="16" height="16" rx="2" fill="#ffffff"/>
-      <rect x="28" y="116" width="16" height="16" rx="2" fill="#ffffff"/>
-      <rect x="70" y="26" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="86" y="26" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="60" y="48" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="76" y="48" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="92" y="48" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="58" y="68" width="12" height="12" rx="2" fill="#111827"/>
-      <rect x="76" y="68" width="12" height="12" rx="2" fill="#14b8a6"/>
-      <rect x="94" y="68" width="12" height="12" rx="2" fill="#111827"/>
-      <rect x="60" y="88" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="76" y="88" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="92" y="88" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="70" y="110" width="10" height="10" rx="2" fill="#111827"/>
-      <rect x="86" y="110" width="10" height="10" rx="2" fill="#111827"/>
-      <text x="80" y="147" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#64748b">${network} preview</text>
-    </svg>
-  `;
-
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-};
-
-const cryptoPreviewWallets = [
-  {
-    network: "USDT (ERC-20)",
-    address: "0xFC4A23D5097FcC3eD5b5c50e1D3282C3895CeF3",
-    qr_code_data_url: buildPreviewQrDataUrl("ERC20"),
-  },
-  {
-    network: "USDT (TRC-20)",
-    address: "TQ7hKx8DkcbWcQwNn6w8b8x7S1Qf1f8vP2",
-    qr_code_data_url: buildPreviewQrDataUrl("TRC20"),
-  },
-];
-
 const PaymentPage = () => {
   const [wallets, setWallets] = useState([]);
   const [status, setStatus] = useState("");
@@ -186,6 +166,7 @@ const PaymentPage = () => {
   const [copiedNetwork, setCopiedNetwork] = useState("");
   const [selectedWalletNetwork, setSelectedWalletNetwork] = useState("");
   const [availablePlans, setAvailablePlans] = useState([]);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
   const [cryptoPaymentRequest, setCryptoPaymentRequest] = useState(null);
   const [cryptoRequestAttemptKey, setCryptoRequestAttemptKey] = useState("");
   const [transactionHash, setTransactionHash] = useState("");
@@ -194,10 +175,10 @@ const PaymentPage = () => {
   const [cryptoPaymentStatus, setCryptoPaymentStatus] = useState("waiting");
   const [quoteSeconds, setQuoteSeconds] = useState(15 * 60);
 
-  const startStripeCheckout = async (planType) => {
-    setActivePlan(planType);
+  const startStripeCheckout = async (plan) => {
+    setActivePlan(plan.id);
     try {
-      const { data } = await api.post("/api/v1/billing/stripe/checkout-session/", { plan_type: planType });
+      const { data } = await api.post("/api/v1/billing/stripe/checkout-session/", { plan_id: plan.backendPlan.id });
       window.location.href = data.checkout_url;
     } catch (e) {
       setStatus(getApiErrorMessage(e, "We couldn't start checkout right now. Please try again in a moment."));
@@ -209,7 +190,7 @@ const PaymentPage = () => {
     if (availablePlans.length) return availablePlans;
 
     const { data } = await api.get("/api/v1/billing/plans/");
-    const nextPlans = data.items || [];
+    const nextPlans = (data.items || []).filter((plan) => plan.active && !plan.is_archived);
     setAvailablePlans(nextPlans);
     return nextPlans;
   };
@@ -220,7 +201,7 @@ const PaymentPage = () => {
     setIsLoadingCrypto(true);
     try {
       const plans = await loadBillingPlans();
-      const plan = plans.find((item) => item.plan_type === selectedPlanMeta.id);
+      const plan = plans.find((item) => String(item.id) === selectedPlanMeta.id);
 
       if (!plan) {
         setWallets([]);
@@ -338,14 +319,17 @@ const PaymentPage = () => {
   };
 
   const statusTone = status ? getStatusTone(status) : "neutral";
-  const selectedPlanMeta = stripePlans.find((plan) => plan.id === selectedPlan);
+  const billingPlans = availablePlans.map(buildBillingPlanMeta);
+  const selectedPlanMeta = billingPlans.find((plan) => plan.id === selectedPlan);
   const selectedMethodMeta = paymentMethods.find((method) => method.id === selectedMethod);
   const walletOptions = wallets;
-  const isUsingPreviewWallets = false;
   const selectedWallet = walletOptions.find((wallet) => wallet.key === selectedWalletNetwork) || null;
   const selectedChargeLabel = selectedPlanMeta?.chargeLabel || "";
-  const cryptoAmount = cryptoPaymentRequest?.expected_amount || selectedWallet?.plan?.price_usd || (selectedPlanMeta?.id === "yearly" ? "190" : "19");
+  const cryptoAmount = cryptoPaymentRequest?.expected_amount || selectedWallet?.plan?.price_usd || selectedPlanMeta?.backendPlan?.price_usd || "";
   const cryptoTokenSymbol = cryptoPaymentRequest?.token_symbol || selectedWallet?.tokenSymbol || "USDT";
+  const cryptoNetworkLabel = cryptoPaymentRequest?.network_name || selectedWallet?.networkName || selectedWallet?.network || "Choose network";
+  const cryptoReceiverAddress = cryptoPaymentRequest?.receiver_address || selectedWallet?.address || "";
+  const cryptoQrPayload = selectedWallet?.qrPayload || cryptoReceiverAddress;
   const cryptoStatusLabel =
     cryptoPaymentStatus === "confirmed"
       ? "Payment confirmed"
@@ -353,6 +337,32 @@ const PaymentPage = () => {
         ? "Pending admin review"
         : "Waiting for payment";
   const canContinueToPayment = Boolean(selectedPlanMeta && selectedMethodMeta && (selectedMethod !== "crypto" || selectedWalletNetwork));
+
+  useEffect(() => {
+    let mounted = true;
+    setIsLoadingPlans(true);
+    api
+      .get("/api/v1/billing/plans/")
+      .then(({ data }) => {
+        if (!mounted) return;
+        const nextPlans = (data.items || []).filter((plan) => plan.active && !plan.is_archived);
+        setAvailablePlans(nextPlans);
+        setSelectedPlan((current) => (current && nextPlans.some((plan) => String(plan.id) === current) ? current : ""));
+        if (!nextPlans.length) {
+          setStatus("No active billing plans are available yet.");
+        }
+      })
+      .catch((e) => {
+        if (mounted) setStatus(getApiErrorMessage(e, "We couldn't load billing plans right now."));
+      })
+      .finally(() => {
+        if (mounted) setIsLoadingPlans(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if ((currentStep === 2 || currentStep === 3) && selectedMethod === "crypto" && selectedPlan && !wallets.length && !isLoadingCrypto) {
@@ -483,11 +493,11 @@ const PaymentPage = () => {
           <fieldset>
             <h2 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Choose a price plan</h2>
             <p className="mt-2 max-w-full text-sm leading-6 text-slate-500">
-              Start with the plan that fits your timeline. Yearly saves $38 compared with paying monthly for 12 months.
+              Start with one of the active plans configured by the admin team.
             </p>
 
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {stripePlans.map((plan) => {
+              {billingPlans.map((plan) => {
                 const isSelected = selectedPlan === plan.id;
 
                 return (
@@ -546,7 +556,7 @@ const PaymentPage = () => {
                       <span className="mt-3 grid gap-2">
                         {plan.perks.map((perk) => (
                           <span className="flex items-center gap-2 text-sm font-semibold text-slate-700" key={perk}>
-                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-teal-100 text-[11px] text-teal-700">✓</span>
+                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-teal-100 text-[11px] text-teal-700">OK</span>
                             {perk}
                           </span>
                         ))}
@@ -556,6 +566,13 @@ const PaymentPage = () => {
                 );
               })}
             </div>
+            {!billingPlans.length ? (
+              <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+                <p className="text-sm font-semibold text-slate-700">
+                  {isLoadingPlans ? "Loading active billing plans..." : "No active plans are available."}
+                </p>
+              </div>
+            ) : null}
           </fieldset>
           {selectedPlanMeta ? (
             <div className="mt-5 rounded-xl border border-teal-200 bg-teal-50/70 px-4 py-3">
@@ -631,7 +648,7 @@ const PaymentPage = () => {
                           <span className="mt-3 flex flex-wrap gap-2">
                             {trustItems.slice(0, 3).map((item) => (
                               <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200" key={item}>
-                                ✓ {item}
+                                OK {item}
                               </span>
                             ))}
                           </span>
@@ -664,24 +681,32 @@ const PaymentPage = () => {
                         type="button"
                       >
                         <span className="block text-sm font-semibold text-slate-950">{wallet.network}</span>
-                        <span className="mt-1 block text-xs text-slate-500">{networkDescriptions[wallet.network] || "Supported wallet network"}</span>
+                        <span className="mt-1 block text-xs text-slate-500">{wallet.tokenSymbol} on {wallet.networkName}</span>
+                        <span className="mt-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{wallet.label}</span>
                       </button>
                     );
                   })}
                 </div>
                 {selectedWallet ? (
                   <div className="mt-4 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center">
-                    <div className="w-full max-w-[112px] rounded-lg border border-slate-200 bg-white p-2">
-                      <img
-                        alt={`${selectedWallet.network} wallet qr preview`}
-                        className="aspect-square w-full rounded-md object-cover"
-                        src={selectedWallet.qr_code_data_url}
-                      />
+                    <div className="w-full max-w-[132px] rounded-lg border border-slate-200 bg-slate-50 p-2">
+                      {selectedWallet.qrCodeDataUrl ? (
+                        <img
+                          alt={`${selectedWallet.network} wallet qr`}
+                          className="aspect-square w-full rounded-md object-cover"
+                          src={selectedWallet.qrCodeDataUrl}
+                        />
+                      ) : (
+                        <div className="flex aspect-square w-full items-center justify-center rounded-md bg-white px-2 text-center text-[11px] font-semibold leading-5 text-slate-500">
+                          QR payload from backend
+                        </div>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-950">Payment address for {selectedWallet.network}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">QR and address will be shown again on the payment step.</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{selectedWallet.tokenSymbol} on {selectedWallet.networkName}</p>
                       <p className="mt-2 break-all text-xs font-medium text-slate-500">{maskWalletAddress(selectedWallet.address)}</p>
+                      <p className="mt-1 break-all text-[11px] text-slate-400">QR payload: {selectedWallet.qrPayload}</p>
                     </div>
                   </div>
                 ) : isLoadingCrypto ? (
@@ -729,7 +754,7 @@ const PaymentPage = () => {
               <div className="mt-4 flex flex-wrap gap-2">
                 {trustItems.map((item) => (
                   <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200" key={item}>
-                    ✓ {item}
+                    OK {item}
                   </span>
                 ))}
               </div>
@@ -773,14 +798,14 @@ const PaymentPage = () => {
                 <button
                   className="rb-btn-primary mt-6 inline-flex h-12 w-full items-center justify-center gap-2 text-base"
                   disabled={Boolean(activePlan)}
-                  onClick={() => startStripeCheckout(selectedPlanMeta.id)}
+                  onClick={() => startStripeCheckout(selectedPlanMeta)}
                   type="button"
                 >
                   <span>{activePlan === selectedPlanMeta.id ? "Opening secure checkout..." : "Pay securely with Stripe"}</span>
                   <ArrowIcon />
                 </button>
               </article>
-              <div className="mt-5 flex justify-start">
+              <div className="mt-3 flex justify-start">
                 <button className="rb-btn-secondary px-3 py-2 text-xs" onClick={() => goToStep(2)} type="button">
                   Back to Method
                 </button>
@@ -791,175 +816,140 @@ const PaymentPage = () => {
       ) : currentStep === 3 && selectedPlanMeta ? (
         <section className="space-y-3">
           <Panel className="overflow-hidden p-0 text-white shadow-[0_18px_50px_rgba(15,23,42,0.14)]" tone="dark">
-            <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+            <div className="px-4 pt-4 sm:px-5 sm:pt-5">
               {renderWizardProgress()}
             </div>
-            <div className="border-b border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.92),rgba(15,23,42,0.82),rgba(8,145,178,0.55))] px-5 py-5 sm:px-6 sm:py-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-300">Crypto payment</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-[1.75rem]">Follow these payment details exactly</h2>
-              <p className="mt-2 max-w-full text-sm leading-6 text-slate-300">
-                Send the exact amount on the selected network, then submit your transaction hash for admin review.
-              </p>
-              <div className="mt-4 grid gap-3 lg:grid-cols-4">
-                <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Send exactly</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">{cryptoAmount} {cryptoTokenSymbol}</p>
+            <div className="border-b border-white/10 bg-slate-950/55 px-4 py-4 sm:px-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-300">Crypto payment</p>
+                  <h2 className="mt-1 text-xl font-semibold tracking-tight text-white">Send payment, then submit the hash</h2>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Network</p>
-                  <p className="mt-1 text-lg font-semibold text-white">{selectedWallet?.network || "Choose network"}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Status</p>
-                  <p className="mt-1 text-lg font-semibold text-amber-100">{cryptoStatusLabel}</p>
-                </div>
-                <div className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-100">Price valid for</p>
-                  <p className="mt-1 text-2xl font-semibold text-amber-50">{formatQuoteTime(quoteSeconds)}</p>
+                <div className="grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[520px]">
+                  <div className="rounded-lg border border-white/10 bg-white/10 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">Amount</p>
+                    <p className="mt-0.5 font-semibold text-white">{cryptoAmount} {cryptoTokenSymbol}</p>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/10 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">Network</p>
+                    <p className="mt-0.5 truncate font-semibold text-white" title={cryptoNetworkLabel}>{cryptoNetworkLabel}</p>
+                  </div>
+                  <div className="rounded-lg border border-amber-300/25 bg-amber-400/10 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-100">Valid</p>
+                    <p className="mt-0.5 font-semibold text-amber-50">{formatQuoteTime(quoteSeconds)}</p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-5 p-5 sm:p-6">
-              <div className="grid gap-2.5">
-                {cryptoChecklist.map((item, index) => (
-                  <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-slate-200" key={item}>
-                    <span className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-[11px] font-bold text-white">
-                      {index + 1}
-                    </span>
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-
+            <div className="space-y-3 p-4 sm:p-5">
               {selectedWallet ? (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                      {isLoadingCrypto ? <SpinnerIcon /> : null}
-                      <span>{isLoadingCrypto || isSubmittingCrypto ? "Generating your payment request..." : isUsingPreviewWallets ? "Preview payment details" : "Live payment details"}</span>
+                <div className="space-y-3">
+                  {walletOptions.length > 1 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {walletOptions.map((wallet) => {
+                        const isSelected = wallet.key === selectedWallet.key;
+
+                        return (
+                          <button
+                            className={`rounded-lg border px-3 py-2 text-left text-xs font-semibold transition duration-200 ${
+                              isSelected
+                                ? "border-teal-300 bg-teal-400/20 text-teal-50 shadow-[0_12px_24px_rgba(20,184,166,0.16)]"
+                                : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10"
+                            }`}
+                            key={wallet.key}
+                            onClick={() => setSelectedWalletNetwork(wallet.key)}
+                            type="button"
+                          >
+                            <span className="block">{wallet.network}</span>
+                            <span className="mt-0.5 block font-normal text-slate-300">{wallet.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${cryptoPaymentStatus === "detecting" ? "bg-amber-400/15 text-amber-100" : "bg-teal-400/15 text-teal-100"}`}>
-                      {cryptoStatusLabel}
-                    </span>
+                  ) : null}
+
+                  <div className="rounded-lg border border-red-300/35 bg-red-500/12 px-3 py-2.5 text-red-50">
+                    <p className="text-sm font-semibold">Send only {cryptoTokenSymbol} on {cryptoNetworkLabel}. Other assets or networks may be lost.</p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {walletOptions.map((wallet) => {
-                      const isSelected = wallet.key === selectedWallet.key;
-
-                      return (
-                        <button
-                          className={`rounded-xl border px-4 py-2 text-left text-xs font-semibold transition duration-200 ${
-                            isSelected
-                              ? "border-teal-300 bg-teal-400/20 text-teal-50 shadow-[0_12px_24px_rgba(20,184,166,0.16)]"
-                              : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10"
-                          }`}
-                          key={wallet.key}
-                          onClick={() => setSelectedWalletNetwork(wallet.key)}
-                          type="button"
-                        >
-                          <span className="block">{wallet.network}</span>
-                          <span className="mt-1 block font-normal text-slate-300">{networkDescriptions[wallet.network] || "Supported network"}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="rounded-xl border border-red-300/40 bg-red-500/15 px-4 py-3 text-red-50">
-                    <p className="text-sm font-bold">⚠ Send only {cryptoTokenSymbol} on {selectedWallet.network} network.</p>
-                    <p className="mt-1 text-sm leading-6">Sending other assets or using another network will result in permanent loss.</p>
-                  </div>
-
-                  <article className="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-5">
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
-                      <div className="space-y-4">
-                        <div className="rounded-xl border border-white/10 bg-slate-950/30 px-4 py-4">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <article className="rounded-xl border border-white/10 bg-white/5 p-3 sm:p-4">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
+                      <div className="space-y-3">
+                        <div className="rounded-lg border border-white/10 bg-slate-950/30 px-3 py-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Wallet address</p>
-                              <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{maskWalletAddress(selectedWallet.address)}</p>
-                              <p className="mt-1 text-xs text-slate-400">{selectedWallet.network} | {networkDescriptions[selectedWallet.network] || selectedWallet.networkName}</p>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Wallet address</p>
+                              <p className="mt-1 text-xl font-semibold tracking-tight text-white">{maskWalletAddress(cryptoReceiverAddress)}</p>
+                              <p className="mt-1 text-xs text-slate-400">{selectedWallet.networkCode} | {cryptoNetworkLabel}</p>
                             </div>
                             <button
-                              className="rb-btn-primary h-12 min-w-40 gap-2"
-                              onClick={() => copyWalletAddress(selectedWallet.network, selectedWallet.address)}
+                              className="rb-btn-primary h-10 min-w-36 gap-2 px-3"
+                              onClick={() => copyWalletAddress(selectedWallet.network, cryptoReceiverAddress)}
                               type="button"
                             >
                               <CopyIcon />
-                              <span>{copiedNetwork === selectedWallet.network ? "Copied ✓" : "Copy address"}</span>
+                              <span>{copiedNetwork === selectedWallet.network ? "Copied" : "Copy address"}</span>
                             </button>
                           </div>
-                          <p className="mt-3 break-all rounded-lg bg-white/5 px-3 py-2 text-sm leading-6 text-slate-200">{selectedWallet.address}</p>
+                          <p className="mt-2 break-all rounded-md bg-white/5 px-2.5 py-2 text-xs leading-5 text-slate-200">{cryptoReceiverAddress}</p>
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          {[
-                            { label: "Waiting for payment", active: cryptoPaymentStatus === "waiting" },
-                            { label: "Pending admin review", active: cryptoPaymentStatus === "detecting" },
-                            { label: "Payment confirmed ✓", active: cryptoPaymentStatus === "confirmed" },
-                          ].map((item) => (
-                            <div
-                              className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                                item.active ? "border-teal-300 bg-teal-400/15 text-teal-50" : "border-white/10 bg-white/5 text-slate-400"
-                              }`}
-                              key={item.label}
-                            >
-                              {item.label}
-                            </div>
-                          ))}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Reference</p>
+                            <p className="mt-1 break-all text-sm font-semibold text-slate-200">{cryptoPaymentRequest?.reference_code || "Creating reference..."}</p>
+                          </div>
+                          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Status</p>
+                            <p className="mt-1 text-sm font-semibold text-amber-100">{cryptoStatusLabel}</p>
+                          </div>
                         </div>
 
-                        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                          <p className="text-sm font-semibold text-white">Payment reference</p>
-                          <p className="mt-1 break-all text-sm leading-6 text-slate-300">{cryptoPaymentRequest?.reference_code || "Creating reference..."}</p>
-                        </div>
-
-                        <div className="grid gap-3">
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
                           <input
-                            className="rb-field border-white/10 bg-white/95 text-slate-900"
+                            className="rb-field h-10 border-white/10 bg-white/95 text-sm text-slate-900"
                             onChange={(event) => setTransactionHash(event.target.value)}
                             placeholder="Transaction hash"
                             value={transactionHash}
                           />
                           <input
-                            className="rb-field border-white/10 bg-white/95 text-slate-900"
+                            className="rb-field h-10 border-white/10 bg-white/95 text-sm text-slate-900"
                             onChange={(event) => setSenderAddress(event.target.value)}
                             placeholder="Sender address optional"
                             value={senderAddress}
                           />
                         </div>
 
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          <button className="rb-btn-primary h-11 justify-center" disabled={isSubmittingCrypto} onClick={submitCryptoTransaction} type="button">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <button className="rb-btn-primary h-10 justify-center px-4" disabled={isSubmittingCrypto} onClick={submitCryptoTransaction} type="button">
                             {isSubmittingCrypto ? "Submitting..." : "Submit transaction"}
                           </button>
-                          <button className="rb-btn-secondary-dark h-11 justify-center" onClick={checkCryptoPaymentStatus} type="button">
+                          <button className="rb-btn-secondary-dark h-10 justify-center px-4" onClick={checkCryptoPaymentStatus} type="button">
                             Check payment status
                           </button>
                         </div>
                       </div>
 
-                      <div className="mx-auto w-full max-w-[260px] rounded-xl border border-white/10 bg-white p-3 text-slate-900">
-                        <img
-                          alt={`${selectedWallet.network} wallet qr`}
-                          className="aspect-square w-full rounded-[1rem] object-cover"
-                          src={selectedWallet.qr_code_data_url}
-                        />
-                        <p className="mt-3 text-center text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Scan with your wallet app</p>
-                        <p className="mt-2 text-center text-sm font-semibold text-slate-900">{cryptoAmount} {cryptoTokenSymbol}</p>
-                        <p className="mt-1 text-center text-xs text-slate-500">{maskWalletAddress(selectedWallet.address)}</p>
+                      <div className="mx-auto w-full max-w-[220px] rounded-lg border border-white/10 bg-white p-2.5 text-slate-900">
+                        {selectedWallet.qrCodeDataUrl ? (
+                          <img
+                            alt={`${selectedWallet.network} wallet qr`}
+                            className="aspect-square w-full rounded-lg object-cover"
+                            src={selectedWallet.qrCodeDataUrl}
+                          />
+                        ) : (
+                          <div className="flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 text-center text-xs font-semibold leading-5 text-slate-600">
+                            Use the address or payload below.
+                          </div>
+                        )}
+                        <p className="mt-2 text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{selectedWallet.qrCodeDataUrl ? "Scan wallet" : "QR payload"}</p>
+                        <p className="mt-1 text-center text-sm font-semibold text-slate-900">{cryptoAmount} {cryptoTokenSymbol}</p>
+                        <p className="mt-1 break-all rounded-md bg-slate-50 px-2 py-1.5 text-[11px] leading-5 text-slate-500">{cryptoQrPayload}</p>
                       </div>
                     </div>
                   </article>
 
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {cryptoTrustItems.map((item) => (
-                      <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200" key={item}>
-                        ✓ {item}
-                      </div>
-                    ))}
-                  </div>
                 </div>
               ) : (
                 <div className="mt-5 rounded-[1.5rem] border border-dashed border-white/15 bg-white/5 px-5 py-8 text-center">

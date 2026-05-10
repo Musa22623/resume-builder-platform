@@ -62,11 +62,11 @@ const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) =>
   return (
     <aside
       className={[
-        "relative rounded-xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] lg:sticky lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:flex-shrink-0",
+        "relative rounded-xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] lg:sticky lg:top-3 lg:flex lg:h-[calc(100vh-1.5rem)] lg:flex-shrink-0 lg:flex-col",
         isCollapsed ? "lg:w-[5.25rem]" : "lg:w-72",
       ].join(" ")}
     >
-      <div className={`mb-4 flex ${isCollapsed ? "justify-center" : "items-start justify-between gap-3"}`}>
+      <div className={`mb-4 flex flex-shrink-0 ${isCollapsed ? "justify-center" : "items-start justify-between gap-3"}`}>
         {!isCollapsed ? (
           <>
             <div>
@@ -101,35 +101,37 @@ const Sidebar = ({ isCollapsed, navItems, onLogout, onToggleCollapse, user }) =>
         </button>
       </div>
 
-      <nav className="grid gap-2">
+      <nav className="grid gap-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
         <SidebarLinks isCollapsed={isCollapsed} navItems={navItems} />
       </nav>
 
-      {!isCollapsed ? (
-        <div className="mt-5 rounded-lg bg-slate-900 p-4 text-white">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Signed in as</p>
-          <p className="mt-2 text-base font-semibold">{displayName}</p>
-          {secondaryText ? <p className="mt-1 text-sm text-slate-300">{secondaryText}</p> : null}
-        </div>
-      ) : (
-        <div className="mt-5 flex justify-center">
-          <div
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-semibold text-white"
-            title={displayName}
-          >
-            {initials}
+      <div className="flex-shrink-0">
+        {!isCollapsed ? (
+          <div className="mt-4 rounded-lg bg-slate-900 p-3 text-white">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Signed in as</p>
+            <p className="mt-2 truncate text-sm font-semibold" title={displayName}>{displayName}</p>
+            {secondaryText ? <p className="mt-1 truncate text-xs text-slate-300" title={secondaryText}>{secondaryText}</p> : null}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="mt-4 flex justify-center">
+            <div
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-semibold text-white"
+              title={displayName}
+            >
+              {initials}
+            </div>
+          </div>
+        )}
 
-      <button
-        className={`rb-btn-secondary mt-5 ${isCollapsed ? "w-full px-0" : "w-full"}`}
-        onClick={onLogout}
-        title={isCollapsed ? "Logout" : undefined}
-        type="button"
-      >
-        {isCollapsed ? "Out" : "Logout"}
-      </button>
+        <button
+          className={`rb-btn-secondary mt-3 ${isCollapsed ? "w-full px-0" : "w-full"}`}
+          onClick={onLogout}
+          title={isCollapsed ? "Logout" : undefined}
+          type="button"
+        >
+          {isCollapsed ? "Out" : "Logout"}
+        </button>
+      </div>
     </aside>
   );
 };

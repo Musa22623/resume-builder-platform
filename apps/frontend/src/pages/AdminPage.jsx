@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
+import {
+  ActionButton,
+  ActionGroup,
+  AdminTable,
+  CheckboxField,
+  Feedback,
+  Field,
+  SelectField,
+  StatusPill,
+  useAdminFeedback,
+} from "../components/admin/AdminPrimitives";
 import PageTitleBar from "../components/ui/PageTitleBar";
 import Panel from "../components/ui/Panel";
+import { useAuth } from "../context/AuthContext";
 import api from "../services/api/client";
-import { getApiErrorMessage } from "../lib/apiError";
 import { getUserDisplayName, getUserSecondaryText } from "../lib/userDisplay";
 
 const sectionMeta = {
@@ -91,81 +102,17 @@ const formatDateTime = (value) => {
 
 const money = (value, currency = "USD") => {
   if (value === undefined || value === null || value === "") return "-";
-  return `${currency} ${Number(value).toFixed(2)}`;
+  const amount = Number(value);
+  if (Number.isNaN(amount)) return "-";
+  return `${currency} ${amount.toFixed(2)}`;
 };
 
-const toArray = (payload) => payload?.items || [];
+// Admin APIs are mostly paginated, but a few maintenance endpoints still return plain arrays.
+const toArray = (payload) => (Array.isArray(payload) ? payload : payload?.items || []);
 
-const StatusPill = ({ children, tone = "slate" }) => {
-  const tones = {
-    slate: "border-slate-200 bg-slate-50 text-slate-700",
-    green: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    amber: "border-amber-200 bg-amber-50 text-amber-800",
-    red: "border-rose-200 bg-rose-50 text-rose-700",
-    teal: "border-teal-200 bg-teal-50 text-teal-700",
-  };
-  return <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${tones[tone] || tones.slate}`}>{children}</span>;
-};
-
-const AdminTable = ({ columns, empty = "No records found.", rows }) => (
-  <div className="overflow-x-auto rounded-xl border border-slate-200">
-    <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-      <thead className="bg-slate-50 text-xs uppercase tracking-[0.14em] text-slate-500">
-        <tr>
-          {columns.map((column) => (
-            <th className="whitespace-nowrap px-4 py-3 font-semibold" key={column.key}>{column.label}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100 bg-white">
-        {rows.length ? rows.map((row) => (
-          <tr className="align-top" key={row.id || row.key}>
-            {columns.map((column) => (
-              <td className="px-4 py-3 text-slate-700" key={column.key}>{column.render ? column.render(row) : row[column.key]}</td>
-            ))}
-          </tr>
-        )) : (
-          <tr>
-            <td className="px-4 py-8 text-center text-sm font-medium text-slate-500" colSpan={columns.length}>{empty}</td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-);
-
-const Feedback = ({ feedback }) => {
-  if (!feedback) return null;
-  const toneClass = feedback.tone === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800";
-  return <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${toneClass}`}>{feedback.message}</div>;
-};
-
-const Field = ({ label, ...props }) => (
-  <label className="block">
-    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</span>
-    <input className="rb-field h-10 px-3 py-2 text-sm" {...props} />
-  </label>
-);
-
-const SelectField = ({ children, label, ...props }) => (
-  <label className="block">
-    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</span>
-    <select className="rb-field h-10 px-3 py-2 text-sm" {...props}>{children}</select>
-  </label>
-);
-
-const CheckboxField = ({ checked, label, onChange }) => (
-  <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-    <input checked={checked} className="h-4 w-4 rounded border-slate-300 text-teal-600" onChange={(event) => onChange(event.target.checked)} type="checkbox" />
-    {label}
-  </label>
-);
-
-const useAdminFeedback = () => {
-  const [feedback, setFeedback] = useState(null);
-  const showSuccess = (message) => setFeedback({ tone: "success", message });
-  const showError = (error, fallback) => setFeedback({ tone: "error", message: getApiErrorMessage(error, fallback) });
-  return { feedback, setFeedback, showError, showSuccess };
+const formatPayloadSnippet = (payload) => {
+  if (!payload || Object.keys(payload).length === 0) return "-";
+  return JSON.stringify(payload);
 };
 
 const AdminPage = ({ section = "overview" }) => {
@@ -256,10 +203,11 @@ const OverviewSection = () => {
 };
 
 const UsersSection = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState({ search: "", role: "", is_active: "", access_type: "" });
   const [isLoading, setIsLoading] = useState(false);
-  const { feedback, showError, showSuccess } = useAdminFeedback();
+  const { feedback, setFeedback, showError, showSuccess } = useAdminFeedback();
 
   const loadUsers = () => {
     setIsLoading(true);
@@ -277,6 +225,11 @@ const UsersSection = () => {
   }, []);
 
   const updateUser = async (user, payload) => {
+    if (currentUser && String(user.id) === String(currentUser.id)) {
+      setFeedback({ tone: "error", message: "You cannot change your own role or active status from this page." });
+      return;
+    }
+
     try {
       const { data } = await api.patch(`/api/v1/admin/users/${user.id}/`, payload);
       const nextUser = data.user || data;
@@ -332,16 +285,24 @@ const UsersSection = () => {
             {
               key: "actions",
               label: "Actions",
-              render: (user) => (
-                <div className="flex flex-wrap gap-2">
-                  <button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => updateUser(user, { role: user.role === "ADMIN" ? "USER" : "ADMIN" })} type="button">
-                    Make {user.role === "ADMIN" ? "User" : "Admin"}
-                  </button>
-                  <button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => updateUser(user, { is_active: !user.is_active })} type="button">
-                    {user.is_active ? "Deactivate" : "Activate"}
-                  </button>
-                </div>
-              ),
+              render: (user) => {
+                const isCurrentUser = currentUser && String(user.id) === String(currentUser.id);
+
+                if (isCurrentUser) {
+                  return <StatusPill tone="slate">Current user</StatusPill>;
+                }
+
+                return (
+                  <ActionGroup>
+                    <ActionButton onClick={() => updateUser(user, { role: user.role === "ADMIN" ? "USER" : "ADMIN" })}>
+                      Make {user.role === "ADMIN" ? "User" : "Admin"}
+                    </ActionButton>
+                    <ActionButton onClick={() => updateUser(user, { is_active: !user.is_active })} tone={user.is_active ? "danger" : "primary"}>
+                      {user.is_active ? "Deactivate" : "Activate"}
+                    </ActionButton>
+                  </ActionGroup>
+                );
+              },
             },
           ]}
           rows={users}
@@ -472,7 +433,19 @@ const PlansSection = () => {
               { key: "price", label: "Price", render: (plan) => money(plan.price_usd, plan.currency) },
               { key: "stripe", label: "Stripe", render: (plan) => <span className="break-all text-xs">{plan.stripe_price_id || "-"}</span> },
               { key: "state", label: "State", render: (plan) => <div className="flex flex-wrap gap-1.5"><StatusPill tone={plan.active ? "green" : "amber"}>{plan.active ? "Active" : "Inactive"}</StatusPill>{plan.is_archived ? <StatusPill tone="red">Archived</StatusPill> : null}</div> },
-              { key: "actions", label: "Actions", render: (plan) => <div className="flex flex-wrap gap-2"><button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => startEdit(plan)} type="button">Edit</button><button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => runPlanAction(plan, plan.active ? "deactivate" : "activate")} type="button">{plan.active ? "Deactivate" : "Activate"}</button><button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => runPlanAction(plan, "archive")} type="button">Archive</button></div> },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (plan) => (
+                  <ActionGroup>
+                    <ActionButton onClick={() => startEdit(plan)}>Edit</ActionButton>
+                    <ActionButton onClick={() => runPlanAction(plan, plan.active ? "deactivate" : "activate")} tone={plan.active ? "warning" : "primary"}>
+                      {plan.active ? "Pause" : "Activate"}
+                    </ActionButton>
+                    <ActionButton onClick={() => runPlanAction(plan, "archive")} tone="danger">Archive</ActionButton>
+                  </ActionGroup>
+                ),
+              },
             ]}
             rows={plans}
           />
@@ -571,7 +544,7 @@ const CryptoNetworksSection = () => {
             { key: "display_name", label: "Network", render: (row) => <div><p className="font-semibold text-slate-950">{row.display_name}</p><p className="mt-1 text-xs text-slate-500">{row.code}</p></div> },
             { key: "token", label: "Token", render: (row) => `${row.token_symbol || "-"} / ${row.network_name || "-"}` },
             { key: "active", label: "Active", render: (row) => <StatusPill tone={row.is_active ? "green" : "amber"}>{row.is_active ? "Active" : "Inactive"}</StatusPill> },
-            { key: "actions", label: "Actions", render: (row) => <button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => { setEditingId(row.id); setForm({ ...defaultNetworkForm, ...row }); }} type="button">Edit</button> },
+            { key: "actions", label: "Actions", render: (row) => <ActionGroup><ActionButton onClick={() => { setEditingId(row.id); setForm({ ...defaultNetworkForm, ...row }); }}>Edit</ActionButton></ActionGroup> },
           ]}
           rows={items}
         />
@@ -639,7 +612,7 @@ const CryptoWalletsSection = () => {
             { key: "label", label: "Wallet", render: (row) => <div><p className="font-semibold text-slate-950">{row.label || "Wallet"}</p><p className="mt-1 text-xs text-slate-500">{row.network_code}</p></div> },
             { key: "address", label: "Address", render: (row) => <span className="break-all text-xs">{row.address}</span> },
             { key: "state", label: "State", render: (row) => <div className="flex flex-wrap gap-1.5"><StatusPill tone={row.is_active ? "green" : "amber"}>{row.is_active ? "Active" : "Inactive"}</StatusPill><StatusPill tone={row.is_public ? "teal" : "slate"}>{row.is_public ? "Public" : "Private"}</StatusPill></div> },
-            { key: "actions", label: "Actions", render: (row) => <button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => { setEditingId(row.id); setForm({ ...defaultWalletForm, ...row, network: row.network || "" }); }} type="button">Edit</button> },
+            { key: "actions", label: "Actions", render: (row) => <ActionGroup><ActionButton onClick={() => { setEditingId(row.id); setForm({ ...defaultWalletForm, ...row, network: row.network || "" }); }}>Edit</ActionButton></ActionGroup> },
           ]}
           rows={wallets}
         />
@@ -710,7 +683,7 @@ const CryptoAvailabilitySection = () => {
             { key: "plan_name", label: "Plan" },
             { key: "network_code", label: "Network" },
             { key: "enabled", label: "Enabled", render: (row) => <StatusPill tone={row.is_enabled ? "green" : "amber"}>{row.is_enabled ? "Enabled" : "Disabled"}</StatusPill> },
-            { key: "actions", label: "Actions", render: (row) => <button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => { setEditingId(row.id); setForm({ plan: row.plan, network: row.network, is_enabled: row.is_enabled }); }} type="button">Edit</button> },
+            { key: "actions", label: "Actions", render: (row) => <ActionGroup><ActionButton onClick={() => { setEditingId(row.id); setForm({ plan: row.plan, network: row.network, is_enabled: row.is_enabled }); }}>Edit</ActionButton></ActionGroup> },
           ]}
           rows={availability}
         />
@@ -790,7 +763,7 @@ const CryptoReviewsSection = () => {
               { key: "amount", label: "Amount", render: (row) => `${row.expected_amount} ${row.token_symbol || row.expected_currency}` },
               { key: "network_code", label: "Network" },
               { key: "status", label: "Status", render: (row) => <StatusPill tone={row.status === "approved" ? "green" : row.status === "rejected" ? "red" : "amber"}>{row.status}</StatusPill> },
-              { key: "actions", label: "Actions", render: (row) => <button className="rb-btn-subtle px-3 py-1.5 text-xs" onClick={() => setSelected(row)} type="button">Review</button> },
+              { key: "actions", label: "Actions", render: (row) => <ActionGroup><ActionButton onClick={() => setSelected(row)} tone="primary">Review</ActionButton></ActionGroup> },
             ]}
             rows={items}
           />
@@ -856,11 +829,20 @@ const LogsSection = () => {
       <Panel className="p-4">
         <AdminTable
           columns={[
-            { key: "action_type", label: "Action" },
-            { key: "actor_email", label: "Actor" },
-            { key: "target", label: "Target", render: (row) => `${row.target_type || "-"} #${row.target_id || "-"}` },
-            { key: "created_at", label: "Time", render: (row) => formatDateTime(row.created_at) },
-            { key: "payload", label: "Payload", render: (row) => <span className="line-clamp-2 text-xs">{JSON.stringify(row.after_payload || {})}</span> },
+            { key: "action_type", label: "Action", width: "14rem", cellClassName: "font-medium text-slate-800" },
+            { key: "actor_email", label: "Actor", width: "15rem", cellClassName: "whitespace-nowrap" },
+            { key: "target", label: "Target", width: "13rem", render: (row) => `${row.target_type || "-"} #${row.target_id || "-"}` },
+            { key: "created_at", label: "Time", width: "11rem", cellClassName: "whitespace-nowrap", render: (row) => formatDateTime(row.created_at) },
+            {
+              key: "payload",
+              label: "Payload",
+              width: "24rem",
+              render: (row) => (
+                <code className="block line-clamp-2 break-all rounded-md bg-slate-50 px-2 py-1 text-[11px] leading-5 text-slate-600">
+                  {formatPayloadSnippet(row.after_payload)}
+                </code>
+              ),
+            },
           ]}
           rows={logs}
         />
