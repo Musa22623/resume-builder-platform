@@ -565,10 +565,38 @@ const AdminChatPage = () => {
                 <div className="space-y-4">
                   <article className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Message</p>
-                      <span className="text-xs font-semibold text-slate-400">{formatRelativeTime(selected.created_at)}</span>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Message History</p>
+                      <span className="text-xs font-semibold text-slate-400">{selectedThreadMessages.length} messages</span>
                     </div>
-                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{selected.last_message_preview || selected.subject || "No message preview yet."}</p>
+                    <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                      {selectedThreadMessages.length ? selectedThreadMessages.map((item) => {
+                        const isAdmin = item.sender_role === "admin";
+
+                        return (
+                          <div
+                            className={`rounded-xl border px-4 py-3 ${
+                              isAdmin ? "border-teal-200 bg-white" : "border-slate-200 bg-slate-100/80"
+                            }`}
+                            key={item.id}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${isAdmin ? "text-teal-700" : "text-slate-500"}`}>
+                                {isAdmin ? "Admin" : "User"} · {item.sender_email || "unknown"}
+                              </p>
+                              <span className="text-xs font-medium text-slate-400">{formatTimestamp(item.created_at)}</span>
+                            </div>
+                            <p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-700">{item.message}</p>
+                            {item.is_internal_note ? (
+                              <span className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                Internal note
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      }) : (
+                        <p className="text-sm leading-6 text-slate-500">{selected.last_message_preview || selected.subject || "No message preview yet."}</p>
+                      )}
+                    </div>
                   </article>
 
                   <article className="rounded-xl border border-slate-200 bg-white px-4 py-4">

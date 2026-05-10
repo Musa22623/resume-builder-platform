@@ -25,8 +25,16 @@ const App = () => {
   ];
   const adminNavItems = [
     ...baseNavItems,
-    { to: "/admin", label: "Admin Console", icon: "AD", description: "Users and support" },
+    { to: "/admin", label: "Overview", icon: "AO", description: "Ops summary" },
+    { to: "/admin/users", label: "Users", icon: "US", description: "Accounts and access" },
+    { to: "/admin/plans", label: "Plans", icon: "PL", description: "Pricing controls" },
+    { to: "/admin/trial", label: "Trial", icon: "TR", description: "Default access" },
     { to: "/admin/chat", label: "Support Inbox", icon: "IN", description: "Reply to messages" },
+    { to: "/admin/crypto/networks", label: "Networks", icon: "CN", description: "Stablecoin rails" },
+    { to: "/admin/crypto/wallets", label: "Wallets", icon: "CW", description: "Receiving addresses" },
+    { to: "/admin/crypto/availability", label: "Availability", icon: "CA", description: "Plan mappings" },
+    { to: "/admin/crypto/reviews", label: "Reviews", icon: "CR", description: "Verify payments" },
+    { to: "/admin/logs", label: "Logs", icon: "LG", description: "Audit trail" },
   ];
   const authNavItems = user?.is_platform_admin || user?.is_staff ? adminNavItems : baseNavItems;
 
@@ -83,7 +91,87 @@ const App = () => {
           element={
             <ProtectedRoute adminOnly>
               <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
-                <AdminPage />
+                <AdminPage section="overview" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="users" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/plans"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="plans" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/trial"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="trial" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/crypto/networks"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="crypto-networks" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/crypto/wallets"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="crypto-wallets" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/crypto/availability"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="crypto-availability" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/crypto/reviews"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="crypto-reviews" />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/logs"
+          element={
+            <ProtectedRoute adminOnly>
+              <AppLayout navItems={adminNavItems} onLogout={logout} user={user}>
+                <AdminPage section="logs" />
               </AppLayout>
             </ProtectedRoute>
           }
