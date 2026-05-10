@@ -121,7 +121,7 @@ DATABASES = {
         "PASSWORD": get_env("POSTGRES_PASSWORD", required=True),
         "HOST": get_env("POSTGRES_HOST", "127.0.0.1"),
         "PORT": get_env("POSTGRES_PORT", "5433"),
-        "OPTIONS": {"sslmode": "require"},
+        # "OPTIONS": {"sslmode": "require"},
     }
 }
 
