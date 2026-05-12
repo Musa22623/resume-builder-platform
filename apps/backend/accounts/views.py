@@ -7,12 +7,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.serializers import SignUpSerializer, UserSerializer, LoginSerializer, CustomTokenRefreshSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
+from accounts.serializers import SignUpSerializer, UserSerializer, LoginSerializer, GoogleAuthSerializer, CustomTokenRefreshSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
 
 from common.constants.messages import AUTH_MESSAGES
 from common.constants.errors import AUTH_ERRORS
 from common.responses import success_response, error_response
-from accounts.services import send_password_reset_email
+from accounts.services import get_or_create_user_from_google_token, send_password_reset_email
 
 import smtplib
 from email.message import EmailMessage
@@ -23,6 +23,26 @@ logger = logging.getLogger(__name__)
 
 
 User = get_user_model()
+
+
+def _build_auth_response_data(user):
+    refresh = RefreshToken.for_user(user)
+    is_platform_admin = user.role == "ADMIN"
+
+    return {
+        "access_token": str(refresh.access_token),
+        "refresh_token": str(refresh),
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "email_verified": user.email_verified,
+            "created_at": user.created_at,
+            "is_staff": user.is_staff,
+            "is_platform_admin": is_platform_admin,
+            "name": getattr(user, "name", ""),
+        },
+    }
 
 
 class SignUpView(APIView):
@@ -89,29 +109,26 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data["user"]
-        refresh = RefreshToken.for_user(user)
-
-        isPlatformAdmin = False
-
-        if user.role == "ADMIN":
-            isPlatformAdmin = True
 
         return success_response(
             message=AUTH_MESSAGES["LOGIN_SUCCESS"],
-            data={
-                "access_token": str(refresh.access_token),
-                "refresh_token": str(refresh),
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "role": user.role,
-                    "email_verified": user.email_verified,
-                    "created_at": user.created_at,
-                    "is_staff": user.is_staff,
-                    "is_platform_admin": isPlatformAdmin,
-                    "name": getattr(user, "name", ""),
-                },
-            },
+            data=_build_auth_response_data(user),
+            status=status.HTTP_200_OK,
+        )
+
+
+class GoogleAuthView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = GoogleAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = get_or_create_user_from_google_token(serializer.validated_data["id_token"])
+
+        return success_response(
+            message=AUTH_MESSAGES["GOOGLE_LOGIN_SUCCESS"],
+            data=_build_auth_response_data(user),
             status=status.HTTP_200_OK,
         )
 

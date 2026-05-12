@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import GoogleAuthButton from "../components/auth/GoogleAuthButton";
 import { useAuth } from "../context/AuthContext";
 import { getApiErrorMessage } from "../lib/apiError";
 
@@ -10,11 +11,12 @@ const ONBOARDING_STEPS = [
 ];
 
 const SignupPage = () => {
-  const { login, signup } = useAuth();
+  const { login, signup, googleLogin } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -46,6 +48,30 @@ const SignupPage = () => {
       setError(getApiErrorMessage(err, "We couldn't create your account right now. Please try again in a moment."));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const onGoogleCredential = async (idToken) => {
+    setError("");
+    setIsGoogleSubmitting(true);
+
+    try {
+      await googleLogin(idToken);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(getApiErrorMessage(err, "We couldn't create your Google session right now."));
+    } finally {
+      setIsGoogleSubmitting(false);
+    }
+  };
+
+  const onGoogleError = (nextError) => {
+    if (typeof nextError === "string" && nextError) {
+      setError(nextError);
+      return;
+    }
+    if (nextError) {
+      setError(getApiErrorMessage(nextError, "We couldn't start Google sign-in right now."));
     }
   };
 
@@ -117,11 +143,14 @@ const SignupPage = () => {
           </div>
           <button
             className="rb-btn-primary mt-6 w-full disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isGoogleSubmitting}
             type="submit"
           >
             {isSubmitting ? "Creating account..." : "Create Account"}
           </button>
+          <div className="mt-5">
+            <GoogleAuthButton onCredential={onGoogleCredential} onError={onGoogleError} text="signup_with" />
+          </div>
           {error ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p> : null}
 
           <div className="mt-4 flex items-center justify-between gap-4 rounded-[1.3rem] bg-slate-50 px-4 py-3 text-sm text-slate-600">

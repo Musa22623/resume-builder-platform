@@ -1,6 +1,7 @@
 AUTH_MESSAGES = {
     "SIGNUP_SUCCESS": "Signup completed successfully.",
     "LOGIN_SUCCESS": "Login successful.",
+    "GOOGLE_LOGIN_SUCCESS": "Google login successful.",
     "LOGOUT_SUCCESS": "Logout successful.",
     "TOKEN_REFRESH_SUCCESS": "Token refreshed successfully.",
     "ME_SUCCESS": "User profile retrieved successfully.",

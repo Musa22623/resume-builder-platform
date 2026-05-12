@@ -43,3 +43,26 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"Profile of {self.user.email}"
+
+
+class SocialAccount(models.Model):
+    PROVIDER_CHOICES = (
+        ("google", "Google"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="social_accounts",
+    )
+    provider = models.CharField(max_length=30, choices=PROVIDER_CHOICES)
+    provider_user_id = models.CharField(max_length=255)
+    email = models.EmailField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("provider", "provider_user_id")
+
+    def __str__(self):
+        return f"{self.provider}:{self.email}"

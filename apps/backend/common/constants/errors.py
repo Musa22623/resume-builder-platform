@@ -55,6 +55,26 @@ AUTH_ERRORS = {
         "code": "TOKEN",
         "message": "Invalid or expired token.",
     },
+    "GOOGLE_TOKEN_REQUIRED": {
+        "code": "GOOGLE_TOKEN_REQUIRED",
+        "message": "Google ID token is required.",
+    },
+    "INVALID_GOOGLE_TOKEN": {
+        "code": "INVALID_GOOGLE_TOKEN",
+        "message": "Invalid Google ID token.",
+    },
+    "GOOGLE_EMAIL_REQUIRED": {
+        "code": "GOOGLE_EMAIL_REQUIRED",
+        "message": "Google account email is required.",
+    },
+    "GOOGLE_AUTH_NOT_CONFIGURED": {
+        "code": "GOOGLE_AUTH_NOT_CONFIGURED",
+        "message": "Google auth is not configured.",
+    },
+    "INACTIVE_USER": {
+        "code": "INACTIVE_USER",
+        "message": "This user account is inactive.",
+    },
 }
 
 

@@ -7,17 +7,28 @@ const DEV_LOGIN_STORAGE_KEY = "resume_builder_dev_login_user";
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
+  const storeSession = (payload) => {
+    localStorage.removeItem(DEV_LOGIN_STORAGE_KEY);
+    localStorage.setItem("access_token", payload.access_token);
+    localStorage.setItem("refresh_token", payload.refresh_token);
+    setUser(payload.user);
+  };
+
   const login = async (email, password) => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     const { data } = await api.post("/api/v1/auth/login/", { email, password });
-    localStorage.removeItem(DEV_LOGIN_STORAGE_KEY);
-    localStorage.setItem("access_token", data.access_token);
-    localStorage.setItem("refresh_token", data.refresh_token);
-    setUser(data.user);
+    storeSession(data);
   };
 
   const signup = async (payload) => api.post("/api/v1/auth/signup/", payload);
+
+  const googleLogin = async (idToken) => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    const { data } = await api.post("/api/v1/auth/google/", { id_token: idToken });
+    storeSession(data);
+  };
 
 
   const logout = () => {
@@ -60,7 +71,7 @@ export const AuthProvider = ({ children }) => {
     if (localStorage.getItem("access_token")) loadMe();
   }, []);
 
-  return <AuthContext.Provider value={{ user, login, signup, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, signup, googleLogin, logout }}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => useContext(AuthContext);

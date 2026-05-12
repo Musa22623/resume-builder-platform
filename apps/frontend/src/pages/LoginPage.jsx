@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import GoogleAuthButton from "../components/auth/GoogleAuthButton";
 import { useAuth } from "../context/AuthContext";
 import { getApiErrorMessage } from "../lib/apiError";
 import api from "../services/api/client";
@@ -7,7 +8,7 @@ import api from "../services/api/client";
 const forgotPanelId = "forgot-password-panel";
 
 const LoginPage = () => {
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [forgotEmail, setForgotEmail] = useState("");
@@ -16,6 +17,7 @@ const LoginPage = () => {
   const [forgotSuccess, setForgotSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const onSubmit = async (e) => {
@@ -72,6 +74,30 @@ const LoginPage = () => {
       setForgotSuccess("");
       return next;
     });
+  };
+
+  const onGoogleCredential = async (idToken) => {
+    setError("");
+    setIsGoogleSubmitting(true);
+
+    try {
+      await googleLogin(idToken);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(getApiErrorMessage(err, "We couldn't sign you in with Google right now."));
+    } finally {
+      setIsGoogleSubmitting(false);
+    }
+  };
+
+  const onGoogleError = (nextError) => {
+    if (typeof nextError === "string" && nextError) {
+      setError(nextError);
+      return;
+    }
+    if (nextError) {
+      setError(getApiErrorMessage(nextError, "We couldn't sign you in with Google right now."));
+    }
   };
 
   return (
@@ -185,11 +211,14 @@ const LoginPage = () => {
           </div>
           <button
             className="rb-btn-primary mt-1 h-14 w-full text-base shadow-[0_18px_36px_rgba(13,148,136,0.28)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isGoogleSubmitting}
             type="submit"
           >
             {isSubmitting ? "Signing in..." : "Sign In"}
           </button>
+          <div className="mt-5">
+            <GoogleAuthButton onCredential={onGoogleCredential} onError={onGoogleError} text="signin_with" />
+          </div>
 
           <div className="mt-5 flex flex-col gap-2 rounded-xl border border-teal-100 bg-teal-50/70 px-4 py-4 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
             <span className="font-medium">Need an account first?</span>

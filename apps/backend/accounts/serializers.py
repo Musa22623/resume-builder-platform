@@ -113,6 +113,17 @@ class LoginSerializer(serializers.Serializer):
         attrs["user"] = user
         return attrs
 
+
+class GoogleAuthSerializer(serializers.Serializer):
+    id_token = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        id_token = attrs.get("id_token", "").strip()
+        if not id_token:
+            raise serializers.ValidationError(AUTH_ERRORS["GOOGLE_TOKEN_REQUIRED"])
+        attrs["id_token"] = id_token
+        return attrs
+
 class CustomTokenRefreshSerializer(serializers.Serializer):
     refresh_token = serializers.CharField(required=True)
 
