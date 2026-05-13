@@ -158,8 +158,8 @@ EMAIL_BACKEND = 'accounts.services.UnverifiedSMTPEmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'  # Gmail SMTP Server
 EMAIL_PORT = 587  # normally using port
 EMAIL_USE_TLS = True  # Setting Security using TLS
-EMAIL_HOST_USER = 'kwokhoiyan862@gmail.com'  # Sending email address
-EMAIL_HOST_PASSWORD = 'aitsacpjzydevtug'  # Sending email password
+EMAIL_HOST_USER = get_env("EMAIL_HOST_USER", required=True),  # Sending email address
+EMAIL_HOST_PASSWORD = get_env("EMAIL_HOST_PASSWORD", required=True)  # Sending email password
 DEFAULT_FROM_EMAIL = "no-reply@example.com"
 
 import ssl
