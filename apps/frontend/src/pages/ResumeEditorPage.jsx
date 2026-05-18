@@ -3,11 +3,15 @@ import Panel from "../components/ui/Panel";
 import PageTitleBar from "../components/ui/PageTitleBar";
 import { getApiErrorMessage } from "../lib/apiError";
 import {
+  createResumeVersion,
   autosaveResumeDraft,
   createResumeDraft,
+  getResumeVersionDetail,
   getResumeDetail,
   listResumes,
+  listResumeVersions,
   parseResumeUpload,
+  restoreResumeVersion,
   updateResumeDraftMeta,
   uploadResumeFile,
 } from "../services/api/resumes";
@@ -20,6 +24,19 @@ const formatFileSize = (size) => {
   if (!size) return "0 KB";
   if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const formatVersionTimestamp = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time unavailable";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 };
 
 const getResumeFileError = (file) => {
@@ -375,6 +392,14 @@ const ResumeEditorPage = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [isDraggingUpload, setIsDraggingUpload] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [isCreatingVersion, setIsCreatingVersion] = useState(false);
+  const [isRestoringVersion, setIsRestoringVersion] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState(null);
+  const [previewVersion, setPreviewVersion] = useState(null);
+  const [isLoadingVersionPreview, setIsLoadingVersionPreview] = useState(false);
+  const [restoreCandidate, setRestoreCandidate] = useState(null);
   const [sectionVisibility, setSectionVisibility] = useState({
     profile: true,
     contact: true,
@@ -471,6 +496,73 @@ const ResumeEditorPage = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadVersions = async () => {
+      if (!resumeId) {
+        setVersions([]);
+        setSelectedVersionId(null);
+        return;
+      }
+
+      setIsLoadingVersions(true);
+
+      try {
+        const items = await listResumeVersions(resumeId);
+        if (!isMounted) return;
+        setVersions(items);
+        setSelectedVersionId((current) => (items.some((item) => item.id === current) ? current : items[0]?.id || null));
+      } catch (error) {
+        if (!isMounted) return;
+        setStatus(getApiErrorMessage(error, "We couldn't load resume history right now."));
+      } finally {
+        if (isMounted) {
+          setIsLoadingVersions(false);
+        }
+      }
+    };
+
+    loadVersions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resumeId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadVersionPreview = async () => {
+      if (!resumeId || !selectedVersionId) {
+        setPreviewVersion(null);
+        return;
+      }
+
+      setIsLoadingVersionPreview(true);
+
+      try {
+        const version = await getResumeVersionDetail(resumeId, selectedVersionId);
+        if (!isMounted) return;
+        setPreviewVersion(version);
+      } catch (error) {
+        if (!isMounted) return;
+        setPreviewVersion(null);
+        setStatus(getApiErrorMessage(error, "We couldn't load that snapshot preview right now."));
+      } finally {
+        if (isMounted) {
+          setIsLoadingVersionPreview(false);
+        }
+      }
+    };
+
+    loadVersionPreview();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resumeId, selectedVersionId]);
+
   const saveResume = async () => {
     setStatus("");
     const nextValidationErrors = validateManualResumePayload(payload);
@@ -513,6 +605,64 @@ const ResumeEditorPage = () => {
       setStatus(getApiErrorMessage(error, "We couldn't save the draft right now."));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleCreateVersion = async () => {
+    if (!resumeId) {
+      setStatus("Save the draft once before creating a version snapshot.");
+      return;
+    }
+
+    setIsCreatingVersion(true);
+    setStatus("");
+
+    try {
+      const version = await createResumeVersion(resumeId, payload.content_json);
+      setVersions((current) => [version, ...current.filter((item) => item.id !== version.id)]);
+      setSelectedVersionId(version.id);
+      setStatus("Version snapshot saved.");
+    } catch (error) {
+      setStatus(getApiErrorMessage(error, "We couldn't save a version snapshot right now."));
+    } finally {
+      setIsCreatingVersion(false);
+    }
+  };
+
+  const handlePreviewVersion = (versionId) => {
+    setSelectedVersionId(versionId);
+  };
+
+  const openRestoreModal = (version) => {
+    setSelectedVersionId(version.id);
+    setRestoreCandidate(version);
+  };
+
+  const closeRestoreModal = () => {
+    if (isRestoringVersion) return;
+    setRestoreCandidate(null);
+  };
+
+  const handleRestoreVersion = async () => {
+    if (!resumeId || !restoreCandidate) return;
+
+    setSelectedVersionId(restoreCandidate.id);
+    setIsRestoringVersion(true);
+    setStatus("");
+
+    try {
+      const data = await restoreResumeVersion(resumeId, restoreCandidate.id);
+      const restoredResume = data.resume || data;
+      const restoredPayload = resumeToPayload(restoredResume);
+      setPayload(restoredPayload);
+      setLastSavedSnapshot(JSON.stringify(restoredPayload));
+      setSelectedVersionId(restoreCandidate.id);
+      setRestoreCandidate(null);
+      setStatus("Version restored into the current draft.");
+    } catch (error) {
+      setStatus(getApiErrorMessage(error, "We couldn't restore that version right now."));
+    } finally {
+      setIsRestoringVersion(false);
     }
   };
 
@@ -868,6 +1018,20 @@ const ResumeEditorPage = () => {
 
   const currentSnapshot = JSON.stringify(payload);
   const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshot;
+  const selectedVersion = versions.find((item) => item.id === selectedVersionId) || null;
+  const previewVersionContent = previewVersion ? normalizeResumeContent(previewVersion.content_json || {}) : null;
+  const previewVersionSkills = previewVersionContent?.skills?.slice(0, 8) || [];
+  const previewVersionExperience = previewVersionContent?.experience?.filter((item) => item.role || item.company || item.highlights) || [];
+  const previewVersionEducation = previewVersionContent?.education?.filter((item) => item.school || item.degree || item.field) || [];
+  const previewVersionContactItems = previewVersionContent
+    ? [
+        previewVersionContent.contact_details?.email,
+        previewVersionContent.contact_details?.phone,
+        previewVersionContent.contact_details?.location,
+        previewVersionContent.contact_details?.website,
+        previewVersionContent.contact_details?.linkedin,
+      ].filter(Boolean)
+    : [];
   const toggleSection = (section) => {
     setSectionVisibility((current) => ({
       ...current,
@@ -1447,6 +1611,183 @@ const ResumeEditorPage = () => {
               {uploadedFileName ? <span className="ml-2 text-slate-500">- {uploadedFileName}</span> : null}
             </div>
 
+            <Panel className="mt-6 border-slate-300 bg-white p-4 shadow-none" tone="muted">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">Version history</p>
+                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Saved snapshots</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">Create restore points before a big rewrite or after a draft milestone.</p>
+                </div>
+                <button
+                  className="rb-btn-secondary justify-center px-4 py-2 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={!resumeId || isCreatingVersion || isLoadingDraft}
+                  onClick={handleCreateVersion}
+                  type="button"
+                >
+                  {isCreatingVersion ? "Saving snapshot..." : "Save Snapshot"}
+                </button>
+              </div>
+
+              <div className="mt-4">
+                {isLoadingVersions ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">Loading saved versions...</div>
+                ) : versions.length ? (
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      {versions.map((version) => (
+                        <div
+                          className={`rounded-xl border px-4 py-3 ${
+                            selectedVersionId === version.id ? "border-teal-200 bg-teal-50/60" : "border-slate-200 bg-slate-50/60"
+                          }`}
+                          key={version.id}
+                        >
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Snapshot #{version.id}</p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">{formatVersionTimestamp(version.created_at)}</p>
+                              <p className="mt-2 text-sm text-slate-500">
+                                {selectedVersion?.id === version.id ? "Selected snapshot for preview and restore." : "Available to preview or restore into the current draft."}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                className="rb-btn-secondary justify-center px-3 py-2 text-sm"
+                                onClick={() => handlePreviewVersion(version.id)}
+                                type="button"
+                              >
+                                Preview
+                              </button>
+                              <button
+                                className="rb-btn-primary justify-center px-3 py-2 text-sm disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                                disabled={isRestoringVersion}
+                                onClick={() => openRestoreModal(version)}
+                                type="button"
+                              >
+                                {isRestoringVersion && restoreCandidate?.id === version.id ? "Restoring..." : "Restore"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Snapshot preview</p>
+                          <h4 className="mt-1 text-base font-semibold text-slate-900">
+                            {selectedVersion ? `Snapshot #${selectedVersion.id}` : "Choose a snapshot"}
+                          </h4>
+                          {selectedVersion ? (
+                            <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">
+                              {formatVersionTimestamp(selectedVersion.created_at)}
+                            </p>
+                          ) : null}
+                        </div>
+                        {selectedVersion ? (
+                          <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-700">
+                            Previewing
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {isLoadingVersionPreview ? (
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                          Loading snapshot preview...
+                        </div>
+                      ) : previewVersionContent ? (
+                        <div className="mt-4 space-y-4 text-sm text-slate-600">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4">
+                            <p className="text-lg font-semibold text-slate-900">
+                              {previewVersionContent.name || "No saved name in this snapshot"}
+                            </p>
+                            <p className="mt-1 text-sm font-medium text-slate-600">
+                              {previewVersionContent.headline || "No headline saved in this snapshot yet."}
+                            </p>
+                            <p className="mt-3 text-sm leading-6 text-slate-600">
+                              {previewVersionContent.summary
+                                ? previewVersionContent.summary
+                                : "No summary saved in this snapshot yet."}
+                            </p>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Contact</p>
+                              <div className="mt-2 space-y-1">
+                                {previewVersionContactItems.length ? (
+                                  previewVersionContactItems.map((item) => (
+                                    <p className="text-sm text-slate-600" key={item}>
+                                      {item}
+                                    </p>
+                                  ))
+                                ) : (
+                                  <p className="text-sm text-slate-500">No contact details saved in this snapshot.</p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">At a glance</p>
+                              <div className="mt-2 space-y-1 text-sm text-slate-600">
+                                <p>{previewVersionSkills.length} highlighted skills</p>
+                                <p>{previewVersionExperience.length} experience entries</p>
+                                <p>{previewVersionEducation.length} education entries</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Skills</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {previewVersionSkills.length ? (
+                                previewVersionSkills.map((skill) => (
+                                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700" key={skill}>
+                                    {skill}
+                                  </span>
+                                ))
+                              ) : (
+                                <p className="text-sm text-slate-500">No skills were saved in this snapshot.</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Experience preview</p>
+                            <div className="mt-3 space-y-3">
+                              {previewVersionExperience.length ? (
+                                previewVersionExperience.slice(0, 2).map((item, index) => (
+                                  <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3" key={`${item.role}-${item.company}-${index}`}>
+                                    <p className="text-sm font-semibold text-slate-900">{item.role || "Role title"}</p>
+                                    <p className="mt-1 text-sm text-slate-600">
+                                      {[item.company, item.location, item.employmentType].filter(Boolean).join(" | ") || "Company details not saved"}
+                                    </p>
+                                    <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">
+                                      {item.startDate || "Start"} - {item.isCurrent ? "Present" : item.endDate || "End"}
+                                    </p>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-sm text-slate-500">No work history was saved in this snapshot.</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
+                          Pick a snapshot to see the saved version details before you restore it.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
+                    No snapshots yet. Save the draft, then create a snapshot before the next major change.
+                  </div>
+                )}
+              </div>
+            </Panel>
+
             <div className="mt-8 space-y-8">
               <div>
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Page 1</p>
@@ -1628,6 +1969,46 @@ const ResumeEditorPage = () => {
           </div>
         </div>
       </section>
+
+      {restoreCandidate ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">Confirm restore</p>
+            <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+              Restore Snapshot #{restoreCandidate.id}?
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              This will replace the current draft in the editor with the saved snapshot from{" "}
+              <span className="font-semibold text-slate-900">{formatVersionTimestamp(restoreCandidate.created_at)}</span>.
+            </p>
+
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+              {hasUnsavedChanges
+                ? "You have unsaved changes in the current draft. Restoring now will overwrite what is on screen, so save a fresh snapshot first if you want to keep both versions."
+                : "Your current draft looks saved. Restoring will still replace what is currently loaded in the editor."}
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                className="rb-btn-secondary justify-center px-4 py-2"
+                disabled={isRestoringVersion}
+                onClick={closeRestoreModal}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rb-btn-primary justify-center px-4 py-2 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={isRestoringVersion}
+                onClick={handleRestoreVersion}
+                type="button"
+              >
+                {isRestoringVersion ? "Restoring snapshot..." : "Restore snapshot"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

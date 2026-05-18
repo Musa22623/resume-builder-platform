@@ -44,6 +44,30 @@ export const updateResumeDraftMeta = async (resumeId, payload) => {
   return data.resume || data;
 };
 
+export const listResumeVersions = async (resumeId) => {
+  const { data } = await api.get(`/api/v1/resumes/items/${resumeId}/versions/`);
+  return data.items || [];
+};
+
+export const getResumeVersionDetail = async (resumeId, versionId) => {
+  const { data } = await api.get(`/api/v1/resumes/items/${resumeId}/versions/${versionId}/`);
+  return data.version || data;
+};
+
+export const createResumeVersion = async (resumeId, contentJson) => {
+  const { data } = await api.post(`/api/v1/resumes/items/${resumeId}/create_version/`, {
+    "content_json": contentJson,
+  });
+  return data.version || data;
+};
+
+export const restoreResumeVersion = async (resumeId, versionId) => {
+  const { data } = await api.post(`/api/v1/resumes/items/${resumeId}/restore_version/`, {
+    "version_id": versionId,
+  });
+  return data;
+};
+
 export const uploadResumeFile = async (resumeId, file) => {
   const formData = new FormData();
   formData.append("resume", String(resumeId));

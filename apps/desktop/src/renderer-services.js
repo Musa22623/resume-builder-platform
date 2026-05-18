@@ -250,6 +250,10 @@
   ];
 
   const api = {
+    listBillingPlans: async () => {
+      const data = await window.desktopApi.get("/api/v1/billing/plans/");
+      return data.items || [];
+    },
     listResumes: async () => {
       const data = await window.desktopApi.get("/api/v1/resumes/items/");
       return data.items || [];
@@ -296,8 +300,29 @@
     },
     deleteJobDescription: async (descriptionId) => window.desktopApi.delete(`/api/v1/jobs/descriptions/${descriptionId}/`),
     loadTrial: async () => window.desktopApi.get("/api/v1/billing/trial/me/"),
-    startStripeCheckout: async (planType) => window.desktopApi.post("/api/billing/stripe/checkout-session/", { plan_type: planType }),
-    loadCryptoPaymentInfo: async () => window.desktopApi.get("/api/billing/crypto/payment-info/"),
+    startStripeCheckout: async (planType) => window.desktopApi.post("/api/v1/billing/stripe/checkout-session/", { plan_type: planType }),
+    loadCryptoPlanWallets: async (planId) => {
+      const data = await window.desktopApi.get(`/api/v1/billing/crypto/plans/${planId}/wallets/`);
+      return {
+        plan: data.plan || null,
+        networks: data.networks || [],
+      };
+    },
+    createCryptoPaymentRequest: async ({ planId, networkId, walletId }) => {
+      const data = await window.desktopApi.post("/api/v1/billing/crypto/payment-requests/", {
+        plan_id: planId,
+        network_id: networkId,
+        wallet_id: walletId,
+      });
+      return data.payment_request || data;
+    },
+    submitCryptoTransaction: async (requestId, payload) => {
+      const data = await window.desktopApi.post(
+        `/api/v1/billing/crypto/payment-requests/${requestId}/submit-transaction/`,
+        payload
+      );
+      return data.payment_request || data;
+    },
   };
 
   root.services = {

@@ -59,12 +59,21 @@
       selectedPlan: "",
       selectedMethod: "stripe",
       currentStep: 1,
+      availablePlans: [],
+      plansLoaded: false,
+      isLoadingPlans: false,
+      backendPlan: null,
       activePlan: "",
       wallets: [],
-      selectedWalletNetwork: "",
+      selectedWalletId: "",
       cryptoLoaded: false,
       isLoadingCrypto: false,
-      copiedNetwork: "",
+      isPreparingCrypto: false,
+      isSubmittingCrypto: false,
+      copiedWalletId: "",
+      cryptoPaymentRequest: null,
+      transactionHash: "",
+      senderAddress: "",
       status: "",
     },
   };
@@ -693,6 +702,47 @@
 
   const getSelectedPlan = () => S.constants.stripePlans.find((plan) => plan.id === state.billing.selectedPlan) || null;
   const getSelectedMethod = () => S.constants.paymentMethods.find((method) => method.id === state.billing.selectedMethod) || null;
+  const getSelectedBackendPlan = () => {
+    const selectedPlan = getSelectedPlan();
+    if (!selectedPlan) return null;
+    return (
+      state.billing.availablePlans.find(
+        (plan) => plan.active && !plan.is_archived && plan.plan_type === selectedPlan.id
+      ) || null
+    );
+  };
+  const getWalletOptions = () => state.billing.wallets;
+  const getSelectedWallet = () => getWalletOptions().find((wallet) => String(wallet.id) === String(state.billing.selectedWalletId)) || null;
+
+  const resetCryptoState = () => {
+    state.billing.backendPlan = null;
+    state.billing.wallets = [];
+    state.billing.selectedWalletId = "";
+    state.billing.cryptoLoaded = false;
+    state.billing.isLoadingCrypto = false;
+    state.billing.isPreparingCrypto = false;
+    state.billing.isSubmittingCrypto = false;
+    state.billing.copiedWalletId = "";
+    state.billing.cryptoPaymentRequest = null;
+    state.billing.transactionHash = "";
+    state.billing.senderAddress = "";
+  };
+
+  const normalizeWalletOptions = (networks) =>
+    networks.flatMap((network) =>
+      (network.wallets || []).map((wallet) => ({
+        id: wallet.id,
+        networkId: network.id,
+        networkCode: network.code,
+        networkLabel: network.display_name || network.network_name || network.code,
+        tokenSymbol: network.token_symbol || "",
+        networkName: network.network_name || network.display_name || network.code,
+        label: wallet.label || "",
+        address: wallet.address,
+        qrPayload: wallet.qr_payload || wallet.address,
+        qrCodeDataUrl: h.buildPreviewQrDataUrl(network.network_name || network.display_name || network.code),
+      }))
+    );
 
   const canOpenBillingStep = (stepId) => {
     if (stepId === 1) return true;
@@ -721,9 +771,9 @@
     const bs = state.billing;
     const selectedPlan = getSelectedPlan();
     const selectedMethod = getSelectedMethod();
-    const walletOptions = bs.wallets.length ? bs.wallets : S.constants.cryptoPreviewWallets;
-    const selectedWallet = walletOptions.find((wallet) => wallet.network === bs.selectedWalletNetwork) || walletOptions[0] || null;
-    const isUsingPreviewWallets = !bs.wallets.length;
+    const walletOptions = getWalletOptions();
+    const selectedWallet = getSelectedWallet() || walletOptions[0] || null;
+    const instructionSnapshot = bs.cryptoPaymentRequest?.instruction_snapshot || null;
 
     return `
       <section class="page-head">
@@ -826,36 +876,81 @@
               <div class="section-head">
                 <div>
                   <div class="eyebrow">Crypto payment</div>
-                  <h2>Choose crypto, then follow the wallet flow</h2>
+                  <h2>Prepare a payment request, then submit your transaction hash</h2>
                 </div>
-                <span class="pill">${bs.isLoadingCrypto ? "Refreshing" : isUsingPreviewWallets ? "Preview" : "Live"}</span>
+                <span class="pill">${bs.isLoadingCrypto ? "Refreshing" : bs.cryptoPaymentRequest ? "Request ready" : "Live"}</span>
               </div>
               ${
                 selectedWallet
                   ? `<div class="wallet-layout">
                       <div class="wallet-qr">
-                        <img alt="${h.escapeAttr(selectedWallet.network)} wallet qr" src="${h.escapeAttr(selectedWallet.qr_code_data_url)}" />
-                        <span>Scan QR</span>
+                        <img alt="${h.escapeAttr(selectedWallet.networkLabel)} wallet qr" src="${h.escapeAttr(selectedWallet.qrCodeDataUrl)}" />
+                        <span>QR preview</span>
                       </div>
                       <div class="wallet-detail">
                         <div class="wallet-tabs">
                           ${walletOptions
                             .map(
                               (wallet) => `
-                                <button class="${wallet.network === selectedWallet.network ? "active" : ""}" data-wallet="${h.escapeAttr(wallet.network)}" type="button">${h.escapeHtml(wallet.network)}</button>
+                                <button class="${String(wallet.id) === String(selectedWallet.id) ? "active" : ""}" data-wallet-id="${h.escapeAttr(wallet.id)}" type="button">${h.escapeHtml(
+                                  `${wallet.tokenSymbol || "Token"} · ${wallet.networkName}`
+                                )}</button>
                               `
                             )
                             .join("")}
                         </div>
-                        <h3>${h.escapeHtml(selectedWallet.network)}</h3>
-                        <div class="warning-box">Send funds only on the selected network. ${isUsingPreviewWallets ? "Preview values are shown until live wallet data is available." : ""}</div>
+                        <h3>${h.escapeHtml(selectedWallet.networkLabel)}</h3>
+                        <div class="warning-box">Send only ${h.escapeHtml(selectedWallet.tokenSymbol || selectedPlan?.currency || "USDT")} on ${h.escapeHtml(
+                          selectedWallet.networkName
+                        )}. Create a payment request before you send funds so the reference code matches this desktop session.</div>
                         <div class="address-box">
                           <span>${h.escapeHtml(selectedWallet.address)}</span>
-                          <button class="secondary-btn" data-copy-wallet="${h.escapeAttr(selectedWallet.network)}" type="button">${h.icon("copy")} ${bs.copiedNetwork === selectedWallet.network ? "Copied" : "Copy"}</button>
+                          <button class="secondary-btn" data-copy-wallet-id="${h.escapeAttr(selectedWallet.id)}" type="button">${h.icon("copy")} ${
+                            String(bs.copiedWalletId) === String(selectedWallet.id) ? "Copied" : "Copy"
+                          }</button>
                         </div>
+                        <div class="inline-actions tight">
+                          <button class="primary-btn" data-billing-action="prepare-crypto" type="button" ${bs.isPreparingCrypto ? "disabled" : ""}>${
+                            bs.isPreparingCrypto ? "Preparing..." : bs.cryptoPaymentRequest ? "Refresh Payment Request" : "Prepare Crypto Payment"
+                          }</button>
+                        </div>
+                        ${
+                          bs.cryptoPaymentRequest
+                            ? `
+                              <div class="warning-box">
+                                <strong>${h.escapeHtml(instructionSnapshot?.headline || "Payment request ready")}</strong>
+                                <div class="stack compact">
+                                  ${(instructionSnapshot?.steps || [])
+                                    .map((step) => `<span>${h.escapeHtml(step)}</span>`)
+                                    .join("")}
+                                </div>
+                              </div>
+                              <div class="address-box">
+                                <span>Reference: ${h.escapeHtml(bs.cryptoPaymentRequest.reference_code || "-")}</span>
+                                <span>Amount: ${h.escapeHtml(
+                                  `${bs.cryptoPaymentRequest.expected_amount} ${bs.cryptoPaymentRequest.token_symbol || bs.cryptoPaymentRequest.expected_currency}`
+                                )}</span>
+                                <span>Expires: ${h.escapeHtml(h.formatShortDate(bs.cryptoPaymentRequest.expires_at))}</span>
+                              </div>
+                              <label class="field-label" for="transactionHash">Transaction hash</label>
+                              <input class="field" id="transactionHash" data-billing-field="transactionHash" type="text" placeholder="Paste your on-chain transaction hash" value="${h.escapeAttr(
+                                bs.transactionHash
+                              )}" />
+                              <label class="field-label" for="senderAddress">Sender address (optional)</label>
+                              <input class="field" id="senderAddress" data-billing-field="senderAddress" type="text" placeholder="Wallet address that sent the funds" value="${h.escapeAttr(
+                                bs.senderAddress
+                              )}" />
+                              <div class="inline-actions tight">
+                                <button class="primary-btn" data-billing-action="submit-crypto" type="button" ${
+                                  bs.isSubmittingCrypto ? "disabled" : ""
+                                }>${bs.isSubmittingCrypto ? "Submitting..." : "Submit Transaction Hash"}</button>
+                              </div>
+                            `
+                            : ""
+                        }
                       </div>
                     </div>`
-                  : '<div class="empty-state">Crypto payment details are not available right now.</div>'
+                  : '<div class="empty-state">Crypto payment details are not available for this plan right now.</div>'
               }
               <div class="inline-actions"><button class="secondary-btn" data-billing-next="2" type="button">Back to Method</button></div>
             </section>`
@@ -1461,6 +1556,7 @@
       button.onclick = () => {
         state.billing.selectedPlan = button.dataset.plan;
         state.billing.status = "";
+        resetCryptoState();
         render();
       };
     });
@@ -1468,21 +1564,37 @@
       button.onclick = () => {
         state.billing.selectedMethod = button.dataset.method;
         state.billing.status = "";
+        if (button.dataset.method !== "crypto") {
+          resetCryptoState();
+        }
         render();
       };
     });
-    document.querySelectorAll("[data-wallet]").forEach((button) => {
+    document.querySelectorAll("[data-wallet-id]").forEach((button) => {
       button.onclick = () => {
-        state.billing.selectedWalletNetwork = button.dataset.wallet;
+        state.billing.selectedWalletId = button.dataset.walletId;
+        state.billing.cryptoPaymentRequest = null;
+        state.billing.transactionHash = "";
+        state.billing.senderAddress = "";
         render();
+      };
+    });
+    document.querySelectorAll("[data-billing-field]").forEach((input) => {
+      input.oninput = (event) => {
+        const fieldName = event.target.dataset.billingField;
+        state.billing[fieldName] = event.target.value;
       };
     });
 
     const stripeButton = document.querySelector("[data-billing-action='stripe']");
     if (stripeButton) stripeButton.onclick = startStripeCheckout;
+    const prepareCryptoButton = document.querySelector("[data-billing-action='prepare-crypto']");
+    if (prepareCryptoButton) prepareCryptoButton.onclick = prepareCryptoPaymentRequest;
+    const submitCryptoButton = document.querySelector("[data-billing-action='submit-crypto']");
+    if (submitCryptoButton) submitCryptoButton.onclick = submitCryptoTransaction;
 
-    document.querySelectorAll("[data-copy-wallet]").forEach((button) => {
-      button.onclick = () => copyWalletAddress(button.dataset.copyWallet);
+    document.querySelectorAll("[data-copy-wallet-id]").forEach((button) => {
+      button.onclick = () => copyWalletAddress(button.dataset.copyWalletId);
     });
 
     if (state.billing.currentStep === 3 && state.billing.selectedMethod === "crypto") {
@@ -1527,35 +1639,116 @@
     render();
 
     try {
-      const data = await api.loadCryptoPaymentInfo();
-      bs.wallets = data.wallets || [];
-      bs.selectedWalletNetwork = bs.wallets[0]?.network || S.constants.cryptoPreviewWallets[0]?.network || "";
+      if (!bs.plansLoaded && !bs.availablePlans.length) {
+        bs.isLoadingPlans = true;
+        bs.availablePlans = await api.listBillingPlans();
+        bs.plansLoaded = true;
+        bs.isLoadingPlans = false;
+      }
+
+      const backendPlan = getSelectedBackendPlan();
+      bs.backendPlan = backendPlan;
+      if (!backendPlan) {
+        throw new Error("No active backend plan is configured for this billing option.");
+      }
+
+      const data = await api.loadCryptoPlanWallets(backendPlan.id);
+      bs.wallets = normalizeWalletOptions(data.networks || []);
+      bs.selectedWalletId = bs.wallets[0]?.id ? String(bs.wallets[0].id) : "";
       if (!bs.wallets.length) {
-        bs.status = "Live crypto details are not ready yet, so preview address and QR are shown for the UI.";
+        bs.status = "No live crypto wallets are enabled for this plan right now.";
+      } else {
+        bs.status = "Crypto wallets loaded. Prepare a payment request before sending funds.";
       }
     } catch (error) {
       bs.status = h.getApiErrorMessage(error, "We couldn't load crypto payment details right now. Please try again in a moment.");
-      bs.selectedWalletNetwork = S.constants.cryptoPreviewWallets[0]?.network || "";
+      bs.wallets = [];
+      bs.selectedWalletId = "";
     } finally {
       bs.cryptoLoaded = true;
       bs.isLoadingCrypto = false;
+      bs.isLoadingPlans = false;
       render();
     }
   };
 
-  const copyWalletAddress = async (network) => {
-    const walletOptions = state.billing.wallets.length ? state.billing.wallets : S.constants.cryptoPreviewWallets;
-    const wallet = walletOptions.find((item) => item.network === network);
+  const prepareCryptoPaymentRequest = async () => {
+    const bs = state.billing;
+    const selectedWallet = getSelectedWallet();
+    const backendPlan = bs.backendPlan || getSelectedBackendPlan();
+    if (!backendPlan || !selectedWallet) {
+      bs.status = "Choose a plan and wallet before creating a crypto payment request.";
+      render();
+      return;
+    }
+
+    bs.isPreparingCrypto = true;
+    bs.status = "";
+    render();
+
+    try {
+      const paymentRequest = await api.createCryptoPaymentRequest({
+        planId: backendPlan.id,
+        networkId: selectedWallet.networkId,
+        walletId: selectedWallet.id,
+      });
+      bs.cryptoPaymentRequest = paymentRequest;
+      bs.transactionHash = "";
+      bs.senderAddress = "";
+      bs.status = `Payment request ${paymentRequest.reference_code} is ready. Send funds, then submit your transaction hash.`;
+    } catch (error) {
+      bs.status = h.getApiErrorMessage(error, "We couldn't prepare the crypto payment request right now.");
+    } finally {
+      bs.isPreparingCrypto = false;
+      render();
+    }
+  };
+
+  const submitCryptoTransaction = async () => {
+    const bs = state.billing;
+    if (!bs.cryptoPaymentRequest?.id) {
+      bs.status = "Create a crypto payment request before submitting your transaction hash.";
+      render();
+      return;
+    }
+
+    if (!bs.transactionHash.trim()) {
+      bs.status = "Paste the transaction hash before submitting.";
+      render();
+      return;
+    }
+
+    bs.isSubmittingCrypto = true;
+    bs.status = "";
+    render();
+
+    try {
+      const paymentRequest = await api.submitCryptoTransaction(bs.cryptoPaymentRequest.id, {
+        transaction_hash: bs.transactionHash.trim(),
+        sender_address: bs.senderAddress.trim(),
+      });
+      bs.cryptoPaymentRequest = paymentRequest;
+      bs.status = "Transaction hash submitted. An admin will review the payment request.";
+    } catch (error) {
+      bs.status = h.getApiErrorMessage(error, "We couldn't submit the transaction hash right now.");
+    } finally {
+      bs.isSubmittingCrypto = false;
+      render();
+    }
+  };
+
+  const copyWalletAddress = async (walletId) => {
+    const wallet = state.billing.wallets.find((item) => String(item.id) === String(walletId));
     if (!wallet) return;
 
     try {
       await window.desktopApi.copyText(wallet.address);
-      state.billing.copiedNetwork = network;
-      state.billing.status = `${network} wallet address copied.`;
+      state.billing.copiedWalletId = String(walletId);
+      state.billing.status = `${wallet.networkLabel} wallet address copied.`;
       render();
       window.setTimeout(() => {
-        if (state.billing.copiedNetwork === network) {
-          state.billing.copiedNetwork = "";
+        if (String(state.billing.copiedWalletId) === String(walletId)) {
+          state.billing.copiedWalletId = "";
           render();
         }
       }, 1800);
