@@ -134,6 +134,53 @@ const maskWalletAddress = (address = "") => {
   return `${address.slice(0, 8)}...${address.slice(-6)}`;
 };
 
+const formatHistoryDate = (value) => {
+  if (!value) return "Not available";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const formatHistoryAmount = (amount, currency = "USD") => {
+  const parsed = Number(amount);
+  if (Number.isNaN(parsed)) return `${currency.toUpperCase()} 0`;
+  return `${currencySymbol(currency)}${parsed.toFixed(2).replace(/\.00$/, "")}`;
+};
+
+const normalizeListPayload = (data) => {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+};
+
+const paymentStatusClasses = {
+  paid: "border-teal-200 bg-teal-50 text-teal-700",
+  approved: "border-teal-200 bg-teal-50 text-teal-700",
+  active: "border-teal-200 bg-teal-50 text-teal-700",
+  pending: "border-amber-200 bg-amber-50 text-amber-700",
+  pending_review: "border-amber-200 bg-amber-50 text-amber-700",
+  past_due: "border-amber-200 bg-amber-50 text-amber-700",
+  failed: "border-rose-200 bg-rose-50 text-rose-700",
+  rejected: "border-rose-200 bg-rose-50 text-rose-700",
+  canceled: "border-slate-200 bg-slate-50 text-slate-600",
+};
+
+const getPaymentStatusClassName = (status = "") => paymentStatusClasses[status.toLowerCase()] || paymentStatusClasses.canceled;
+
+const formatStatusLabel = (value = "") =>
+  value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || "Unknown";
+
 const CopyIcon = () => (
   <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 20 20">
     <rect x="7" y="4.5" width="8.5" height="10.5" rx="2" stroke="currentColor" strokeWidth="1.5" />
@@ -174,6 +221,9 @@ const PaymentPage = () => {
   const [isSubmittingCrypto, setIsSubmittingCrypto] = useState(false);
   const [cryptoPaymentStatus, setCryptoPaymentStatus] = useState("waiting");
   const [quoteSeconds, setQuoteSeconds] = useState(15 * 60);
+  const [payments, setPayments] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   const startStripeCheckout = async (plan) => {
     setActivePlan(plan.id);
@@ -322,6 +372,10 @@ const PaymentPage = () => {
   const billingPlans = availablePlans.map(buildBillingPlanMeta);
   const selectedPlanMeta = billingPlans.find((plan) => plan.id === selectedPlan);
   const selectedMethodMeta = paymentMethods.find((method) => method.id === selectedMethod);
+  const planNameById = availablePlans.reduce((accumulator, plan) => {
+    accumulator[String(plan.id)] = plan.name || `Plan #${plan.id}`;
+    return accumulator;
+  }, {});
   const walletOptions = wallets;
   const selectedWallet = walletOptions.find((wallet) => wallet.key === selectedWalletNetwork) || null;
   const selectedChargeLabel = selectedPlanMeta?.chargeLabel || "";
@@ -357,6 +411,37 @@ const PaymentPage = () => {
       })
       .finally(() => {
         if (mounted) setIsLoadingPlans(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    setIsLoadingHistory(true);
+
+    Promise.all([api.get("/api/v1/billing/payments/"), api.get("/api/v1/billing/subscriptions/")])
+      .then(([paymentsResponse, subscriptionsResponse]) => {
+        if (!mounted) return;
+
+        const nextPayments = normalizeListPayload(paymentsResponse.data).sort(
+          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+        );
+        const nextSubscriptions = normalizeListPayload(subscriptionsResponse.data).sort(
+          (a, b) => new Date(b.started_at || b.current_period_start || 0).getTime() - new Date(a.started_at || a.current_period_start || 0).getTime(),
+        );
+
+        setPayments(nextPayments);
+        setSubscriptions(nextSubscriptions);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setStatus(getApiErrorMessage(error, "We couldn't load your billing history right now."));
+      })
+      .finally(() => {
+        if (mounted) setIsLoadingHistory(false);
       });
 
     return () => {
@@ -968,6 +1053,132 @@ const PaymentPage = () => {
           </Panel>
         </section>
       ) : null}
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Panel className="p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Payment history</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Your recent payments</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Review completed, pending, or failed charges in one place.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              {payments.length} total
+            </span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {isLoadingHistory ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                Loading payment history...
+              </div>
+            ) : payments.length ? (
+              payments.map((payment) => (
+                <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" key={payment.id}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">
+                        {planNameById[String(payment.plan)] || (payment.plan ? `Plan #${payment.plan}` : "One-time payment")}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">{formatHistoryDate(payment.created_at)}</p>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <p className="text-base font-semibold text-slate-950">{formatHistoryAmount(payment.amount_usd, payment.currency)}</p>
+                      <span className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getPaymentStatusClassName(payment.status)}`}>
+                        {formatStatusLabel(payment.status)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                      {(payment.provider || "payment").toUpperCase()}
+                    </span>
+                    {payment.token_symbol ? (
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                        {payment.token_symbol} {payment.network_name ? `on ${payment.network_name}` : ""}
+                      </span>
+                    ) : null}
+                    {payment.payment_reference ? (
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                        Ref {payment.payment_reference}
+                      </span>
+                    ) : null}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
+                No completed payment records yet. Once a Stripe or crypto payment is recorded, it will show up here.
+              </div>
+            )}
+          </div>
+        </Panel>
+
+        <Panel className="p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Subscription history</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Your access timeline</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Keep an eye on active access, renewals, and any subscriptions that were canceled or expired.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              {subscriptions.length} total
+            </span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {isLoadingHistory ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                Loading subscription history...
+              </div>
+            ) : subscriptions.length ? (
+              subscriptions.map((subscription) => (
+                <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" key={subscription.id}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">
+                        {planNameById[String(subscription.plan)] || (subscription.plan ? `Plan #${subscription.plan}` : "Subscription")}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Started {formatHistoryDate(subscription.started_at || subscription.current_period_start)}
+                      </p>
+                    </div>
+                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getPaymentStatusClassName(subscription.status || (subscription.is_active ? "active" : "canceled"))}`}>
+                      {formatStatusLabel(subscription.status || (subscription.is_active ? "active" : "canceled"))}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                    <p>
+                      Active now: <span className="font-semibold text-slate-900">{subscription.is_active ? "Yes" : "No"}</span>
+                    </p>
+                    <p>
+                      Access through:{" "}
+                      <span className="font-semibold text-slate-900">
+                        {formatHistoryDate(subscription.current_period_end || subscription.ends_at)}
+                      </span>
+                    </p>
+                    {subscription.cancel_at_period_end ? (
+                      <p className="sm:col-span-2">
+                        <span className="font-semibold text-amber-700">Cancellation scheduled at period end.</span>
+                      </p>
+                    ) : null}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
+                No subscription records yet. Your active or previous plans will appear here after billing is recorded.
+              </div>
+            )}
+          </div>
+        </Panel>
+      </section>
     </div>
   );
 };
